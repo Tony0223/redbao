@@ -15,6 +15,7 @@ import com.tonyfeng.jinshisuda.fragment.MineFragment;
 import com.tonyfeng.jinshisuda.fragment.RedPacketFragment;
 import com.tonyfeng.jinshisuda.fragment.WelfareFragment;
 import com.tonyfeng.jinshisuda.view.FeedAdDrawer;
+import com.tonyfeng.jinshisuda.view.InterstitialAdManager;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -57,6 +58,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 默认停在首页，抽屉正常显示（从红包群 tab 杀进程重开时也会回到这里）
         FeedAdDrawer.resumeFrom(this);
+        InterstitialAdManager.resumeFrom(this);
     }
 
     /**
@@ -98,11 +100,14 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // 红包群那个 tab 的聊天气泡里本来就有信息流，底部再来一条抽屉
-        // 容易被穿山甲判成广告堆叠扣量，所以切到红包群就把抽屉收起来
+        // 容易被穿山甲判成广告堆叠扣量，所以切到红包群就把抽屉收起来；
+        // 插屏也一样，红包群页不弹插屏，切到其他 tab 再恢复
         if (target == redPacketFragment) {
             FeedAdDrawer.suspend(this);
+            InterstitialAdManager.suspend(this);
         } else {
             FeedAdDrawer.resumeFrom(this);
+            InterstitialAdManager.resumeFrom(this);
         }
 
         FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
