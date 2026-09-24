@@ -3,6 +3,7 @@ package com.tonyfeng.jinshisuda.view;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -65,6 +66,12 @@ public final class FeedAdDrawer {
     private boolean userClosed = false;   // 用户主动关过，10秒内不再打扰
     private boolean destroyed = false;
     private boolean suspended = false;  // 被 suspend() 收起了，期间不加载不展示
+    /**
+     * 用户关闭后"该重新出现的时刻"（SystemClock.uptimeMillis）。0 表示没有待重开。
+     * 用绝对时刻而不是相对延时：被插屏切走时 pause() 会清掉定时器，切回来
+     * resume() 按剩余时间补排，不会因为反复 pause/resume 而永远重开不了。
+     */
+    private long reopenAtMs = 0;
 
     private FeedAdDrawer(Activity activity) {
         this.activity = activity;
@@ -130,7 +137,10 @@ public final class FeedAdDrawer {
     private void resumeSelf() {
         if (destroyed) return;
         suspended = false;
-        if (!userClosed && !shown) {
+        if (shown) return;
+        if (userClosed) {
+            scheduleReopen();               // 关过就按剩余冷却时间重开
+        } else {
             scheduleLoad(SHOW_DELAY_MS);
         }
     }
@@ -258,7 +268,11 @@ public final class FeedAdDrawer {
         if (destroyed || suspended) return;
         if (shown) {
             scheduleRefresh();          // 已经在显示，继续按30秒换
-        } else if (!userClosed) {
+        } else if (userClosed) {
+            // 用户关过、还在冷却重开阶段。被插屏切走时 pause() 把重开定时清掉了，
+            // 回到前台这里按剩余时间补排，否则抽屉再也不出现。
+            scheduleReopen();
+        } else {
             scheduleLoad(SHOW_DELAY_MS);
         }
     }
@@ -441,17 +455,27 @@ public final class FeedAdDrawer {
 
     private void onUserClose() {
         userClosed = true;
+        reopenAtMs = SystemClock.uptimeMillis() + REOPEN_DELAY_MS;   // 记下该重开的时刻
         handler.removeCallbacksAndMessages(null);
         hideDrawer(() -> {
             // 同样先摘 View 再销毁，顺序不能反
             if (adContainer != null) adContainer.removeAllViews();
             releaseAdSafely();
-            // 关掉10秒后重新拉一条
-            handler.postDelayed(() -> {
-                userClosed = false;
-                load();
-            }, REOPEN_DELAY_MS);
+            // 关掉后按记下的时刻重新拉一条
+            scheduleReopen();
         });
+    }
+
+    /** 按 reopenAtMs 记下的时刻排一次重开，冷却结束后重置 userClosed 再加载 */
+    private void scheduleReopen() {
+        if (destroyed || suspended) return;
+        handler.removeCallbacksAndMessages(null);
+        long delay = Math.max(0, reopenAtMs - SystemClock.uptimeMillis());
+        handler.postDelayed(() -> {
+            reopenAtMs = 0;
+            userClosed = false;
+            load();
+        }, delay);
     }
 
     /** 安全销毁广告，防止 NativeExpressView 抛异常 */
