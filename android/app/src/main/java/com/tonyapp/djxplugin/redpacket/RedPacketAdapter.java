@@ -53,10 +53,12 @@ public class RedPacketAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
         RedPacketItem item = items.get(position);
         if (holder instanceof TextViewHolder) {
             TextViewHolder h = (TextViewHolder) holder;
+            h.avatar.setText(avatarChar(item.nickname));
             h.nickname.setText(item.nickname);
             h.content.setText(item.content);
         } else if (holder instanceof RedPacketViewHolder) {
             RedPacketViewHolder h = (RedPacketViewHolder) holder;
+            h.avatar.setText(avatarChar(item.nickname));
             h.nickname.setText(item.nickname);
             h.hint.setText(item.opened ? "红包已领取" : item.content);
             h.card.setAlpha(item.opened ? 0.5f : 1f);
@@ -84,22 +86,32 @@ public class RedPacketAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
         return items.size();
     }
 
+    /** 昵称首字当头像文字，空的兜个默认 */
+    private static String avatarChar(String nickname) {
+        if (nickname == null || nickname.isEmpty()) return "群";
+        return nickname.substring(0, 1);
+    }
+
     static class TextViewHolder extends RecyclerView.ViewHolder {
+        TextView avatar;
         TextView nickname;
         TextView content;
         TextViewHolder(View itemView) {
             super(itemView);
+            avatar = itemView.findViewById(R.id.tv_avatar);
             nickname = itemView.findViewById(R.id.tv_nickname);
             content = itemView.findViewById(R.id.tv_content);
         }
     }
 
     static class RedPacketViewHolder extends RecyclerView.ViewHolder {
+        TextView avatar;
         TextView nickname;
         TextView hint;
         View card;
         RedPacketViewHolder(View itemView) {
             super(itemView);
+            avatar = itemView.findViewById(R.id.tv_avatar);
             nickname = itemView.findViewById(R.id.tv_nickname);
             hint = itemView.findViewById(R.id.tv_redpacket_hint);
             card = itemView.findViewById(R.id.card_redpacket);

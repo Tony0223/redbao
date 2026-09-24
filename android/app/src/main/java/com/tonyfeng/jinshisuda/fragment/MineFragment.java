@@ -205,7 +205,12 @@ public class MineFragment extends Fragment {
         View view = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_contact, null);
         dialog.setContentView(view);
         if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            android.view.Window w = dialog.getWindow();
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            // 左右满屏平铺、贴底弹出，像个底部弹层
+            w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.setGravity(android.view.Gravity.BOTTOM);
         }
 
         ((TextView) view.findViewById(R.id.tv_contact_qq)).setText(contactQq);
