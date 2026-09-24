@@ -18,8 +18,11 @@ public class InterstitialAdHelper {
 
     private static final String TAG = "InterstitialAdHelper";
 
-    /** TODO 换成穿山甲后台新建的插屏代码位ID */
-    private static final String AD_SLOT_ID = "104580997";
+    /**
+     * 半屏插全屏代码位（穿山甲后台“广告铺开大小”设为半屏，全站插屏统一用这个）。
+     * 半屏由后台配置决定，SDK 会渲染成一个不铺满屏幕的卡片，右上角带自带的✕。
+     */
+    private static final String AD_SLOT_ID = "104590993";
 
     public interface InterstitialCallback {
         /** 广告关闭或加载失败都会回调，不阻塞主流程 */
