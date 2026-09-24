@@ -44,6 +44,7 @@ public final class InterstitialAdManager {
     private boolean destroyed = false;
     private boolean waiting = false;       // 已排了一次待弹的计时
     private boolean adInProgress = false;  // 插屏正在加载/展示中
+    private boolean suspended = false;     // 被 suspend() 收起（红包群 tab 不弹插屏）
 
     private InterstitialAdManager(Activity activity) {
         this.activity = activity;
@@ -73,6 +74,37 @@ public final class InterstitialAdManager {
         if (m != null) m.destroy();
     }
 
+    /**
+     * 临时收起插屏，收起期间不弹。
+     * 给“这个页面不想要插屏”的场景用，比如红包群 tab：
+     *   切到红包群   -> InterstitialAdManager.suspend(getActivity());
+     *   切走的时候   -> InterstitialAdManager.resumeFrom(getActivity());
+     */
+    public static void suspend(Activity activity) {
+        InterstitialAdManager m = INSTANCES.get(activity);
+        if (m != null) m.suspendSelf();
+    }
+
+    /** 跟 suspend 配对，恢复插屏 */
+    public static void resumeFrom(Activity activity) {
+        InterstitialAdManager m = INSTANCES.get(activity);
+        if (m != null) m.resumeSelf();
+    }
+
+    private void suspendSelf() {
+        suspended = true;
+        handler.removeCallbacksAndMessages(null);
+        waiting = false;
+    }
+
+    private void resumeSelf() {
+        if (destroyed) return;
+        suspended = false;
+        if (!adInProgress && !waiting) {
+            scheduleShow(FIRST_SHOW_DELAY_MS);
+        }
+    }
+
     private static boolean shouldAttach(Activity activity) {
         if (activity == null) return false;
         String name = activity.getClass().getName();
@@ -86,8 +118,8 @@ public final class InterstitialAdManager {
     // ================= 节奏控制 =================
 
     private void resume() {
-        // 广告正在放（此时是从广告页返回）或已经排好了下一次，就不重复安排
-        if (destroyed || adInProgress || waiting) return;
+        // 被收起（红包群 tab）、广告正在放、或已经排好了下一次，都不重复安排
+        if (destroyed || suspended || adInProgress || waiting) return;
         scheduleShow(FIRST_SHOW_DELAY_MS);
     }
 
@@ -105,7 +137,7 @@ public final class InterstitialAdManager {
     }
 
     private void scheduleShow(long delay) {
-        if (destroyed) return;
+        if (destroyed || suspended) return;
         handler.removeCallbacksAndMessages(null);
         waiting = true;
         handler.postDelayed(this::show, delay);
@@ -113,13 +145,13 @@ public final class InterstitialAdManager {
 
     private void show() {
         waiting = false;
-        if (destroyed || activity.isFinishing() || activity.isDestroyed()) return;
+        if (destroyed || suspended || activity.isFinishing() || activity.isDestroyed()) return;
         adInProgress = true;
         Log.d(TAG, "弹插屏 (" + activity.getClass().getSimpleName() + ")");
         InterstitialAdHelper.show(activity, () -> {
             // 关闭或加载失败都会回调到这里，隔 20 秒再弹一次
             adInProgress = false;
-            if (destroyed) return;
+            if (destroyed || suspended) return;
             scheduleShow(REOPEN_DELAY_MS);
         });
     }
