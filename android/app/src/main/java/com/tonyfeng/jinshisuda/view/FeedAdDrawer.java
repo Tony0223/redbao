@@ -153,6 +153,8 @@ public final class FeedAdDrawer {
         if (!name.startsWith(OUR_PACKAGE)) return false;
         // 微信回调页是个透明的中转页，停留不到一秒，挂了也是白挂
         if (name.contains("wxapi")) return false;
+        // 登录页不挂广告，登录成功后才进首页
+        if (name.endsWith(".LoginActivity")) return false;
         return true;
     }
 

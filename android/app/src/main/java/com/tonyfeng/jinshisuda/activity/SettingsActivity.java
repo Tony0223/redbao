@@ -11,7 +11,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.tonyfeng.jinshisuda.MainActivity;
+import com.tonyfeng.jinshisuda.LoginActivity;
 import com.tonyfeng.jinshisuda.R;
 import com.tonyfeng.jinshisuda.api.ApiClient;
 import com.tonyfeng.jinshisuda.api.UserManager;
@@ -190,7 +190,7 @@ public class SettingsActivity extends AppCompatActivity {
                 .setPositiveButton("退出", (d, w) ->
                         UserManager.logout(this, () -> runOnUiThread(() -> {
                             toast("已退出登录");
-                            backToHome();
+                            backToLogin();
                         })))
                 .show();
     }
@@ -227,7 +227,7 @@ public class SettingsActivity extends AppCompatActivity {
                 // 服务端已经把账号处理掉了，本地登录状态也必须清干净
                 UserManager.logout(SettingsActivity.this, () -> runOnUiThread(() -> {
                     toast("账号已注销");
-                    backToHome();
+                    backToLogin();
                 }));
             }
 
@@ -238,9 +238,10 @@ public class SettingsActivity extends AppCompatActivity {
         });
     }
 
-    private void backToHome() {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+    private void backToLogin() {
+        // 退出登录/注销后必须回登录页（必须登录才能进），并清空返回栈防止退回已登录的界面
+        Intent intent = new Intent(this, LoginActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
     }
