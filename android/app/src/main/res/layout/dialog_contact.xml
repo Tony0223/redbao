@@ -2,20 +2,20 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="300dp"
     android:layout_height="wrap_content"
-    android:background="@drawable/bg_mine_row"
+    android:background="@drawable/bg_white_card"
     android:gravity="center_horizontal"
     android:orientation="vertical"
     android:paddingLeft="22dp"
-    android:paddingTop="26dp"
+    android:paddingTop="24dp"
     android:paddingRight="22dp"
-    android:paddingBottom="20dp">
+    android:paddingBottom="18dp">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="联系客服"
         android:textColor="#222222"
-        android:textSize="21sp"
+        android:textSize="17sp"
         android:textStyle="bold" />
 
     <TextView
@@ -32,7 +32,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
         android:textColor="#E8261F"
-        android:textSize="28sp"
+        android:textSize="24sp"
         android:textStyle="bold" />
 
     <TextView
@@ -54,7 +54,7 @@
         android:gravity="center"
         android:text="复制QQ号"
         android:textColor="#7A3B00"
-        android:textSize="18sp"
+        android:textSize="16sp"
         android:textStyle="bold" />
 
     <TextView

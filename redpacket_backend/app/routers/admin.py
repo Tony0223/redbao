@@ -580,6 +580,10 @@ SETTINGS_SECTIONS = [
         ("exchange_rate_coins_per_yuan", "多少金币=1元", "number"),
         ("min_withdraw_coins", "最低提现金币数", "number"),
     ]),
+    ("首页横幅", [
+        ("home_banner_title", "横幅主标题", "text"),
+        ("home_banner_subtitle", "横幅副标题", "text"),
+    ]),
 ]
 
 
