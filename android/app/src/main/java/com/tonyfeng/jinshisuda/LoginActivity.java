@@ -29,9 +29,9 @@ public class LoginActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // 已登录就别停在登录页，直接进首页
+        // 已登录就别停在登录页，直接走开屏
         if (UserManager.isLoggedIn(this)) {
-            goToMain();
+            goNext();
             return;
         }
 
@@ -43,16 +43,17 @@ public class LoginActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // 从微信授权返回后，token 已由 WXEntryActivity 存好，这里检测到即进首页
+        // 从微信授权返回后，token 已由 WXEntryActivity 存好，这里检测到即走开屏再进首页
         if (!navigated && UserManager.isLoggedIn(this)) {
-            goToMain();
+            goNext();
         }
     }
 
-    private void goToMain() {
+    /** 登录成功后先进开屏页，开屏结束再由它进首页 */
+    private void goNext() {
         if (navigated) return;
         navigated = true;
-        startActivity(new Intent(this, MainActivity.class));
+        startActivity(new Intent(this, SplashActivity.class));
         finish();
     }
 }
