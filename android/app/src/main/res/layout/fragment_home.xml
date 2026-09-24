@@ -9,30 +9,46 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp"> <!-- 顶部横幅 -->
-        <LinearLayout
+        android:padding="16dp"> <!-- 顶部横幅：橙色横幅兜底，Banner广告来了盖上去 -->
+        <FrameLayout
+            android:id="@+id/home_banner_area"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_home_banner"
-            android:orientation="vertical"
-            android:padding="24dp">
+            android:layout_height="wrap_content">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- 橙色横幅（兜底，没广告时显示） -->
+            <LinearLayout
+                android:id="@+id/home_banner_fallback"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="金石速答"
-                android:textColor="#FFFFFF"
-                android:textSize="26sp"
-                android:textStyle="bold" />
+                android:background="@drawable/bg_home_banner"
+                android:orientation="vertical"
+                android:padding="24dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="答题闖关 · 轻松长知识 · 还有金币拿"
-                android:textColor="#FFF0EA"
-                android:textSize="14sp" />
-        </LinearLayout> <!-- 热门推荐 标题 -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="金石速答"
+                    android:textColor="#FFFFFF"
+                    android:textSize="26sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="答题闖关 · 轻松长知识 · 还有金币拿"
+                    android:textColor="#FFF0EA"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <!-- Banner广告容器：渲染成功后显示，盖住橙色横幅 -->
+            <FrameLayout
+                android:id="@+id/home_banner_ad_container"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/white"
+                android:visibility="gone" />
+        </FrameLayout> <!-- 热门推荐 标题 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
