@@ -6,6 +6,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -15,6 +16,9 @@ import androidx.fragment.app.Fragment;
 import com.bytedance.sdk.openadsdk.TTNativeExpressAd;
 import com.tonyapp.djxplugin.BannerAdHelper;
 import com.tonyfeng.jinshisuda.R;
+import com.tonyfeng.jinshisuda.api.ApiClient;
+
+import org.json.JSONObject;
 
 public class HomeFragment extends Fragment {
 
@@ -28,8 +32,36 @@ public class HomeFragment extends Fragment {
         root.findViewById(R.id.btn_open_recommend).setOnClickListener(openListener);
         root.findViewById(R.id.btn_open_list_item).setOnClickListener(openListener);
 
+        loadBannerText(root);
         loadBanner(root);
         return root;
+    }
+
+    /**
+     * 拉取后台配置的横幅文案，设置到橙色横幅上（后台 /admin/settings 可改）。
+     * 拉不到就用布局里的默认文案兜底。
+     */
+    private void loadBannerText(View root) {
+        TextView title = root.findViewById(R.id.home_banner_title);
+        TextView subtitle = root.findViewById(R.id.home_banner_subtitle);
+        ApiClient.getAppConfig(new ApiClient.ApiCallback() {
+            @Override
+            public void onSuccess(JSONObject data) {
+                if (!isAdded()) return;
+                String t = data.optString("home_banner_title", "");
+                String s = data.optString("home_banner_subtitle", "");
+                requireActivity().runOnUiThread(() -> {
+                    if (!isAdded()) return;
+                    if (title != null && !t.isEmpty()) title.setText(t);
+                    if (subtitle != null && !s.isEmpty()) subtitle.setText(s);
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+                // 拉不到就用默认文案，不处理
+            }
+        });
     }
 
     /**

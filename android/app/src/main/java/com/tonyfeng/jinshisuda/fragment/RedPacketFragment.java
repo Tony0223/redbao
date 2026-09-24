@@ -78,6 +78,8 @@ public class RedPacketFragment extends Fragment {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
+        // 背景和福利页/我的页保持一致，别再是默认黑底
+        root.setBackgroundResource(com.tonyfeng.jinshisuda.R.drawable.bg_welfare_page);
 
         LinearLayout topBar = new LinearLayout(requireContext());
         topBar.setOrientation(LinearLayout.HORIZONTAL);

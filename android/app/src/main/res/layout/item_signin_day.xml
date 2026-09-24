@@ -9,9 +9,9 @@
     <LinearLayout
         android:id="@+id/layout_packet"
         android:layout_width="match_parent"
-        android:layout_height="74dp"
-        android:layout_marginLeft="2dp"
-        android:layout_marginRight="2dp"
+        android:layout_height="56dp"
+        android:layout_marginLeft="3dp"
+        android:layout_marginRight="3dp"
         android:background="@drawable/bg_signin_packet"
         android:gravity="center"
         android:orientation="vertical">
@@ -38,7 +38,7 @@
         android:id="@+id/tv_signin_day"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="6dp"
         android:textColor="#666666"
-        android:textSize="13sp" />
+        android:textSize="12sp" />
 </LinearLayout>

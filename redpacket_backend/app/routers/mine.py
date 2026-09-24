@@ -126,6 +126,8 @@ def app_config(db: Session = Depends(get_db)):
         "force_update": crud.get_setting(db, "force_update", "false") == "true",
         "coins_per_yuan": int(crud.get_setting(db, "exchange_rate_coins_per_yuan", "100000") or 100000),
         "min_withdraw_coins": int(crud.get_setting(db, "min_withdraw_coins", "500000") or 500000),
+        "home_banner_title": crud.get_setting(db, "home_banner_title", "金石速答"),
+        "home_banner_subtitle": crud.get_setting(db, "home_banner_subtitle", "答题闯关 · 轻松长知识 · 还有金币拿"),
     }
 
 
