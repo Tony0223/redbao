@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 福利活动"立即观看"按钮：蓝紫色圆角块 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="0"
+        android:startColor="#4B44E8"
+        android:endColor="#5A54F0" />
+    <corners android:radius="29dp" />
+</shape>

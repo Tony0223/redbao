@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F6F6F6"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingBottom="24dp">
+
+        <!-- ========== 顶部：渐变 + 头像昵称 + 我的推广卡片 ========== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_invite_header"
+            android:orientation="vertical"
+            android:paddingLeft="16dp"
+            android:paddingTop="24dp"
+            android:paddingRight="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <!--
+                  微信头像。AvatarLoader 会把下载下来的图裁成圆形再塞进来，
+                  所以这里不能再加 padding（会让头像缩在圆圈中间一小块），
+                  也不设 src（占位由 AvatarLoader 画昵称首字）。
+                -->
+                <ImageView
+                    android:id="@+id/iv_avatar"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:contentDescription="头像"
+                    android:scaleType="centerCrop" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tv_nickname"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="加载中…"
+                        android:textColor="#1F2A44"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/layout_user_id"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/tv_user_id"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="用户ID："
+                            android:textColor="#333333"
+                            android:textSize="14sp" />
+
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:layout_marginLeft="6dp"
+                            android:src="@drawable/ic_invite_copy" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- 我的推广卡片 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:background="@drawable/bg_invite_promo_card"
+                android:orientation="vertical"
+                android:paddingBottom="22dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:background="@drawable/bg_invite_promo_title"
+                    android:paddingLeft="40dp"
+                    android:paddingTop="8dp"
+                    android:paddingRight="40dp"
+                    android:paddingBottom="10dp"
+                    android:text="我的推广"
+                    android:textColor="#D9480F"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                <!-- 第一行：总人数 | 今日收益 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <include
+                        android:id="@+id/stat_total"
+                        layout="@layout/item_invite_stat" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="48dp"
+                        android:background="#33FFFFFF" />
+
+                    <include
+                        android:id="@+id/stat_today_income"
+                        layout="@layout/item_invite_stat" />
+                </LinearLayout>
+
+                <!-- 第二行：今日新增 今日活跃 昨日新增 昨日活跃 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:orientation="horizontal">
+
+                    <include
+                        android:id="@+id/stat_today_new"
+                        layout="@layout/item_invite_stat" />
+
+                    <include
+                        android:id="@+id/stat_today_active"
+                        layout="@layout/item_invite_stat" />
+
+                    <include
+                        android:id="@+id/stat_yesterday_new"
+                        layout="@layout/item_invite_stat" />
+
+                    <include
+                        android:id="@+id/stat_yesterday_active"
+                        layout="@layout/item_invite_stat" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/btn_invite"
+                    android:layout_width="match_parent"
+                    android:layout_height="54dp"
+                    android:layout_marginLeft="48dp"
+                    android:layout_marginTop="22dp"
+                    android:layout_marginRight="48dp"
+                    android:background="@drawable/bg_invite_btn"
+                    android:gravity="center"
+                    android:text="立即邀请"
+                    android:textColor="#C2410C"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ========== 平台补贴（没配活动时隐藏，活动结束显示"活动已结束"） ========== -->
+        <LinearLayout
+            android:id="@+id/layout_subsidy"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="16dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginRight="16dp"
+            android:background="@drawable/bg_invite_subsidy_card"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="用户金币提现平台补贴"
+                android:textColor="#222222"
+                android:textSize="22sp" />
+
+            <TextView
+                android:id="@+id/tv_subsidy_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="活动剩余时间"
+                android:textColor="#333333"
+                android:textSize="16sp" />
+
+            <LinearLayout
+                android:id="@+id/layout_countdown"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:orientation="horizontal">
+
+                <include
+                    android:id="@+id/cd_day"
+                    layout="@layout/item_invite_countdown" />
+
+                <include
+                    android:id="@+id/cd_hour"
+                    layout="@layout/item_invite_countdown" />
+
+                <include
+                    android:id="@+id/cd_minute"
+                    layout="@layout/item_invite_countdown" />
+
+                <include
+                    android:id="@+id/cd_second"
+                    layout="@layout/item_invite_countdown" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/layout_tiers"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="vertical" />
+        </LinearLayout>
+
+        <!-- ========== 菜单：推广钱包 / 我的推广 ========== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="16dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginRight="16dp"
+            android:background="@drawable/bg_invite_white_round"
+            android:orientation="vertical">
+
+            <include
+                android:id="@+id/row_wallet"
+                layout="@layout/item_invite_menu_row" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1px"
+                android:layout_marginLeft="16dp"
+                android:layout_marginRight="16dp"
+                android:background="#EEEEEE" />
+
+            <include
+                android:id="@+id/row_promotion"
+                layout="@layout/item_invite_menu_row" />
+        </LinearLayout>
+
+        <!-- ========== 菜单：我的收益 ========== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="16dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginRight="16dp"
+            android:background="@drawable/bg_invite_white_round"
+            android:orientation="vertical">
+
+            <include
+                android:id="@+id/row_income"
+                layout="@layout/item_invite_menu_row" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

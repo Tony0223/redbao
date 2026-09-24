@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 转盘弹窗主按钮 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="0"
+        android:startColor="#FF7A2F"
+        android:endColor="#F4451B" />
+    <corners android:radius="26dp" />
+</shape>

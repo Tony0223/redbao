@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 福利活动进度条：灰色底槽 + 蓝紫色进度 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <solid android:color="#EFEFF4" />
+            <corners android:radius="7dp" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <gradient
+                    android:angle="0"
+                    android:startColor="#4B44E8"
+                    android:endColor="#6C63FF" />
+                <corners android:radius="7dp" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>

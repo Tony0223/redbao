@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  底部抽屉式信息流广告。由 FeedAdDrawer 动态塞进每个页面的根布局，
+  不需要在任何 Activity/Fragment 的布局里引用它。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/layout_feed_ad_drawer"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_feed_drawer"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:elevation="8dp"
+    android:paddingLeft="8dp"
+    android:paddingTop="10dp"
+    android:paddingRight="8dp"
+    android:paddingBottom="8dp">
+
+    <FrameLayout
+        android:id="@+id/drawer_ad_container"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal" />
+
+    <!--
+      透明点击区，盖在广告自带✕的位置上。
+      自己不画图形，用户看到的是广告自带的✕，点下去走我们的关闭逻辑，
+      这样不会出现两个✕错位。
+    -->
+    <View
+        android:id="@+id/drawer_close"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="top|right"
+        android:background="@android:color/transparent" />
+</FrameLayout>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingLeft="16dp"
+    android:paddingRight="16dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_ad_card"
+        android:padding="12dp"
+        android:elevation="2dp">
+
+        <!-- "广告" 标识条：跟内容并排显示，不悬浮遮挡 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="广告"
+            android:textSize="10sp"
+            android:textColor="#999999"
+            android:background="#F5F5F5"
+            android:paddingLeft="6dp"
+            android:paddingRight="6dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp" />
+
+        <!-- 广告内容容器：去掉ScrollView，直接match_parent宽度，
+             避免和RecyclerView产生滚动手势冲突（这是之前点击经常没反应的根因） -->
+        <FrameLayout
+            android:id="@+id/container_ad"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+
+    </LinearLayout>
+
+</LinearLayout>

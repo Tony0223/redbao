@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 转盘中心"点击抽奖"圆钮 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <gradient
+        android:angle="270"
+        android:startColor="#FF8A2B"
+        android:endColor="#F4601B" />
+    <stroke
+        android:width="3dp"
+        android:color="#FFFFFF" />
+</shape>

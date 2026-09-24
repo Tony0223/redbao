@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <application
+        android:name=".MyApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.RedPacketApp">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".wxapi.WXEntryActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <activity android:name="com.tonyfeng.jinshisuda.activity.WithdrawalActivity" />
+        <activity android:name="com.tonyfeng.jinshisuda.activity.InviteListActivity" />
+        <activity android:name="com.tonyfeng.jinshisuda.activity.PunchActivity" />
+        <activity android:name="com.tonyfeng.jinshisuda.activity.BonusActivity" />
+        <activity android:name="com.tonyfeng.jinshisuda.activity.WheelActivity" />
+        <activity android:name="com.tonyfeng.jinshisuda.activity.IncomeActivity" />
+        <activity android:name="com.tonyfeng.jinshisuda.activity.SettingsActivity" />
+        <activity android:name="com.tonyfeng.jinshisuda.activity.ContentActivity" />
+        <activity android:name="com.tonyfeng.jinshisuda.activity.FeedbackActivity"
+            android:windowSoftInputMode="adjustResize" />
+    </application>
+
+</manifest>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/layout_feed_ad"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_welfare_card"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:padding="8dp"
+    android:visibility="gone">
+
+    <FrameLayout
+        android:id="@+id/feed_ad_container"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center" />
+
+    <!--
+      透明点击区，盖在广告自带✕的位置上。
+      自己不画任何图形，用户看到的是广告自带的✕，点下去触发的是我们的关闭逻辑，
+      这样就不会出现两个✕错位的情况。
+    -->
+    <View
+        android:id="@+id/btn_close_feed_ad"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="top|right"
+        android:background="@android:color/transparent" />
+</FrameLayout>
