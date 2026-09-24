@@ -78,17 +78,20 @@ public class RedPacketFragment extends Fragment {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
-        // 背景和福利页/我的页保持一致，别再是默认黑底
-        root.setBackgroundResource(com.tonyfeng.jinshisuda.R.drawable.bg_welfare_page);
+        // 群聊背景用微信那种浅灰，别用红色（红包本来就红，再红底太冲）
+        root.setBackgroundColor(0xFFEDEDED);
 
         LinearLayout topBar = new LinearLayout(requireContext());
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setPadding(24, 24, 24, 24);
+        topBar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        topBar.setBackgroundColor(0xFFFFFFFF);   // 群聊标题栏白底
         topBar.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         tvCoin = new TextView(requireContext());
         tvCoin.setText("金币: 0");
+        tvCoin.setTextColor(0xFF333333);
         tvCoin.setTextSize(16);
         LinearLayout.LayoutParams coinParams = new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
@@ -96,6 +99,7 @@ public class RedPacketFragment extends Fragment {
 
         TextView tvWithdraw = new TextView(requireContext());
         tvWithdraw.setText("提现");
+        tvWithdraw.setTextColor(0xFFE64A3B);
         tvWithdraw.setTextSize(16);
         tvWithdraw.setPadding(24, 8, 24, 8);
         tvWithdraw.setOnClickListener(v ->
