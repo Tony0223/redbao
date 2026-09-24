@@ -29,7 +29,7 @@ public final class InterstitialAdManager {
     private static final String TAG = "InterstitialAdManager";
 
     /** 进页面多久后弹第一次 */
-    private static final long FIRST_SHOW_DELAY_MS = 3000;
+    private static final long FIRST_SHOW_DELAY_MS = 2000;
     /** 关闭（或失败）后多久再弹 */
     private static final long REOPEN_DELAY_MS = 20000;
 
