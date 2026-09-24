@@ -38,7 +38,7 @@ public final class FeedAdDrawer {
     private static final String TAG = "FeedAdDrawer";
 
     /** 进页面多久后开始展示 */
-    private static final long SHOW_DELAY_MS = 1000;
+    private static final long SHOW_DELAY_MS = 0;
     /** 用户关闭后多久重新出现 */
     private static final long REOPEN_DELAY_MS = 10000;
     /** 展示期间多久换一条 */
