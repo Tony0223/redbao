@@ -142,12 +142,18 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
-            <LinearLayout
-                android:id="@+id/layout_signin_days"
+            <HorizontalScrollView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:orientation="horizontal" />
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/layout_signin_days"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal" />
+            </HorizontalScrollView>
         </LinearLayout>
 
         <!-- ========== 每日打卡 ========== -->
