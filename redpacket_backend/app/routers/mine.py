@@ -128,6 +128,8 @@ def app_config(db: Session = Depends(get_db)):
         "min_withdraw_coins": int(crud.get_setting(db, "min_withdraw_coins", "500000") or 500000),
         "home_banner_title": crud.get_setting(db, "home_banner_title", "金石速答"),
         "home_banner_subtitle": crud.get_setting(db, "home_banner_subtitle", "答题闯关 · 轻松长知识 · 还有金币拿"),
+        "site_enabled": crud.get_setting(db, "site_enabled", "true") != "false",
+        "site_closed_msg": crud.get_setting(db, "site_closed_msg", "网站已关闭，请联系管理员"),
     }
 
 

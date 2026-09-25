@@ -67,6 +67,8 @@ public class WithdrawalActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_withdrawal);
 
+        findViewById(R.id.btn_back).setOnClickListener(v -> finish());
+
         layoutAuth = findViewById(R.id.layout_auth);
         tvAuthStatus = findViewById(R.id.tv_auth_status);
         btnAuth = findViewById(R.id.btn_auth);

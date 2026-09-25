@@ -63,14 +63,10 @@ public class ContentActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     tvTitle.setText(d.optString("title", tvTitle.getText().toString()));
                     String content = d.optString("content", "");
-                    if (content.trim().isEmpty()) {
-                        tvContent.setVisibility(View.GONE);
-                        tvEmpty.setVisibility(View.VISIBLE);
-                    } else {
-                        tvContent.setText(content);
-                        tvContent.setVisibility(View.VISIBLE);
-                        tvEmpty.setVisibility(View.GONE);
-                    }
+                    // 后台没填内容就展示空白页，不再显示“暂无内容”
+                    tvContent.setText(content);
+                    tvContent.setVisibility(View.VISIBLE);
+                    tvEmpty.setVisibility(View.GONE);
                 });
             }
 
