@@ -686,6 +686,11 @@ SETTINGS_SECTIONS = [
         ("exchange_rate_coins_per_yuan", "多少金币=1元", "number"),
         ("min_withdraw_coins", "最低提现金币数", "number"),
     ]),
+    ("新人首提福利", [
+        ("newbie_withdraw_enabled", "开启新人首提(true/false)", "text"),
+        ("newbie_withdraw_coins", "新人首提固定金币数(30000≈0.3元)", "number"),
+        ("newbie_withdraw_ad_count", "首提约需看几次广告(仅文案)", "number"),
+    ]),
     ("首页横幅", [
         ("home_banner_title", "横幅主标题", "text"),
         ("home_banner_subtitle", "横幅副标题", "text"),
