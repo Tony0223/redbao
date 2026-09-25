@@ -47,6 +47,8 @@ def _page(invite_code: str, download_url: str, valid: bool) -> str:
          background:linear-gradient(180deg,#F5333F 0%,#FF6B4A 32%,#F6F6F6 60%,#F6F6F6 100%);
          min-height:100vh; display:flex; flex-direction:column; }}
   .top {{ padding:28px 20px 40px; color:#fff; }}
+  .applogo {{ width:72px; height:72px; border-radius:16px; margin-bottom:14px;
+             background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.15); display:block; }}
   .name {{ font-size:22px; font-weight:700; margin-bottom:10px; }}
   .code {{ font-size:17px; display:flex; align-items:center; flex-wrap:wrap; gap:8px; }}
   .code b {{ font-size:20px; letter-spacing:1px; }}
@@ -73,6 +75,7 @@ def _page(invite_code: str, download_url: str, valid: bool) -> str:
 </head>
 <body>
   <div class="top">
+    <img class="applogo" src="/static/app_icon.png" alt="{APP_NAME}">
     <div class="name">{APP_NAME}</div>
     {header}
   </div>
@@ -139,5 +142,6 @@ function download() {{
 def invite_landing(invite_code: str, db: Session = Depends(get_db)):
     invite_code = (invite_code or "").strip()[:16]
     inviter = crud.get_user_by_invite_code(db, invite_code) if invite_code else None
-    download_url = crud.get_setting(db, "update_url", "").strip()
+    # 下载地址：邀请落地页专用，后台“App/客服设置 → App下载地址”可配，默认 fir.im 分发
+    download_url = crud.get_setting(db, "app_download_url", "https://fir.xcxwo.com/sd9efqvp").strip()
     return HTMLResponse(content=_page(invite_code, download_url, inviter is not None))

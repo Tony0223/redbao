@@ -1,7 +1,9 @@
 import logging
+import os
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app import crud, punch_service
 from app.database import Base, SessionLocal, engine
@@ -39,6 +41,10 @@ app = FastAPI(
     description="负责金币奖励规则计算、用户余额、提现等服务端逻辑",
     version="0.1.0",
 )
+
+# 静态资源(App图标等)，落地页 /static/app_icon.png 用
+_static_dir = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 app.include_router(user.router)
 app.include_router(ad.router)
