@@ -144,7 +144,7 @@ def show_subsidy(
             {tiers_html}
         </div>
     """
-    return HTMLResponse(content=render_page("subsidy", body))
+    return HTMLResponse(content=render_page("subsidy", body, admin))
 
 
 @router.post("/activity")

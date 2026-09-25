@@ -108,7 +108,7 @@ def show_bonus(
             </form>
         </div>
     """
-    return HTMLResponse(content=render_page("bonus", body))
+    return HTMLResponse(content=render_page("bonus", body, admin))
 
 
 @router.post("/save")

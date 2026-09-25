@@ -109,7 +109,7 @@ def show_punch(
             </form>
         </div>
     """
-    return HTMLResponse(content=render_page("punch", body))
+    return HTMLResponse(content=render_page("punch", body, admin))
 
 
 @router.post("/save")

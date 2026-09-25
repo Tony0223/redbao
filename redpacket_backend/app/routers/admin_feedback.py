@@ -125,7 +125,7 @@ def show_feedback_list(
         {table_html}
         {pagination_html}
     """
-    return HTMLResponse(content=render_page("feedback", body))
+    return HTMLResponse(content=render_page("feedback", body, admin))
 
 
 @router.get("/{feedback_id}", response_class=HTMLResponse)
@@ -194,7 +194,7 @@ def show_feedback_detail(
             {replied_info}
         </div>
     """
-    return HTMLResponse(content=render_page("feedback", body))
+    return HTMLResponse(content=render_page("feedback", body, admin))
 
 
 @router.post("/{feedback_id}/reply")

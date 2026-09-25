@@ -84,7 +84,7 @@ def show_content(
         {banner}
         {cards}
     """
-    return HTMLResponse(content=render_page("content", body))
+    return HTMLResponse(content=render_page("content", body, admin))
 
 
 @router.post("/save")

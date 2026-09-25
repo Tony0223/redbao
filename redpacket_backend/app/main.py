@@ -24,10 +24,13 @@ logger = logging.getLogger("main")
 # 启动时自动建表（表已存在则跳过）。
 Base.metadata.create_all(bind=engine)
 
-# 启动时把预置的设置项缺的补上默认值
+# 启动时把预置的设置项缺的补上默认值，并确保存在超管后台账号
+from app.routers.admin import ADMIN_USERNAME, ADMIN_PASSWORD  # noqa: E402
+
 _startup_db = SessionLocal()
 try:
     crud.ensure_default_settings(_startup_db)
+    crud.ensure_super_admin(_startup_db, ADMIN_USERNAME, ADMIN_PASSWORD)
 finally:
     _startup_db.close()
 
