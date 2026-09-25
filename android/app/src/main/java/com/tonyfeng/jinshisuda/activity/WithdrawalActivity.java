@@ -34,9 +34,16 @@ public class WithdrawalActivity extends AppCompatActivity {
     private long minCoins = 500000;
     private long coinsPerYuan = 100000;
 
+    // 新人首提福利
+    private boolean isNewbie = false;
+    private long newbieCoins = 30000;
+    private int newbieAdCount = 5;
+    private long normalMinCoins = 500000;   // 正常提现门槛(新人首提到账后生效)
+
     private LinearLayout layoutAuth;
     private TextView tvAuthStatus;
     private Button btnAuth;
+    private TextView tvNewbieBanner;
     private TextView tvBalance;
     private EditText etAmount;
     private TextView tvHint;
@@ -72,6 +79,7 @@ public class WithdrawalActivity extends AppCompatActivity {
         layoutAuth = findViewById(R.id.layout_auth);
         tvAuthStatus = findViewById(R.id.tv_auth_status);
         btnAuth = findViewById(R.id.btn_auth);
+        tvNewbieBanner = findViewById(R.id.tv_newbie_banner);
         tvBalance = findViewById(R.id.tv_balance);
         etAmount = findViewById(R.id.et_amount);
         tvHint = findViewById(R.id.tv_hint);
@@ -116,12 +124,21 @@ public class WithdrawalActivity extends AppCompatActivity {
                 String authState = data.optString("auth_state", "NONE");
                 long min = data.optLong("min_withdraw_coins", minCoins);
                 long rate = data.optLong("coins_per_yuan", coinsPerYuan);
+                boolean newbie = data.optBoolean("is_newbie_withdraw", false);
+                long nbCoins = data.optLong("newbie_withdraw_coins", newbieCoins);
+                int nbAd = data.optInt("newbie_ad_count", newbieAdCount);
+                long normalMin = data.optLong("normal_min_withdraw_coins", min);
                 runOnUiThread(() -> {
                     if (isFinishing()) return;
                     authorized = isAuthorized;
                     minCoins = min;
                     coinsPerYuan = rate > 0 ? rate : coinsPerYuan;
+                    isNewbie = newbie;
+                    newbieCoins = nbCoins;
+                    newbieAdCount = nbAd;
+                    normalMinCoins = normalMin;
                     renderAuth(authState);
+                    renderNewbie();
                     renderHint();
                     renderBalance();
                     scheduleAuthRecheckIfNeeded();
@@ -336,7 +353,29 @@ public class WithdrawalActivity extends AppCompatActivity {
         tvBalance.setText("可提现余额：" + currentBalance + " 金币  ≈ ¥" + yuan(currentBalance));
     }
 
+    /** 新人首提福利：展示横幅，并把提现金额锁定为首提固定金额 */
+    private void renderNewbie() {
+        if (isNewbie) {
+            tvNewbieBanner.setText("🎁 新人首提福利\n看约 " + newbieAdCount + " 次广告攒够 "
+                    + newbieCoins + " 金币，即可提现 " + yuan(newbieCoins) + " 元（仅限首次，先到先得）");
+            tvNewbieBanner.setVisibility(View.VISIBLE);
+            // 首提固定金额，锁死输入框，避免用户改动
+            etAmount.setText(String.valueOf(newbieCoins));
+            etAmount.setEnabled(false);
+            btnSubmit.setText("一键提现 " + yuan(newbieCoins) + " 元");
+        } else {
+            tvNewbieBanner.setVisibility(View.GONE);
+            etAmount.setEnabled(true);
+            btnSubmit.setText("申请提现");
+        }
+    }
+
     private void renderHint() {
+        if (isNewbie) {
+            tvHint.setText("新人首提固定 " + yuan(newbieCoins) + " 元（" + newbieCoins
+                    + " 金币），到账后即可按 " + yuan(normalMinCoins) + " 元起正常提现");
+            return;
+        }
         tvHint.setText("最低 " + minCoins + " 金币（" + yuan(minCoins) + "元）起提，"
                 + coinsPerYuan + " 金币 = 1 元");
     }

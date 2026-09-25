@@ -33,11 +33,20 @@ def withdrawal_info(
 ):
     """提现页信息：是否已绑定微信收款、最低提现金币、汇率。"""
     auth_state = svc.refresh_auth_state(db, current_user)
+    normal_min = int(crud.get_setting(db, "min_withdraw_coins", "500000"))
+    newbie = crud.is_newbie_withdraw_eligible(db, current_user)
+    newbie_coins = int(crud.get_setting(db, "newbie_withdraw_coins", "30000"))
+    # 新人首提时，最低门槛就是首提固定金额，App 沿用 min_withdraw_coins 逻辑即可
+    effective_min = newbie_coins if newbie else normal_min
     return {
         "authorized": auth_state == svc.AUTH_EFFECTIVE,
         "auth_state": auth_state,
-        "min_withdraw_coins": int(crud.get_setting(db, "min_withdraw_coins", "500000")),
+        "min_withdraw_coins": effective_min,
+        "normal_min_withdraw_coins": normal_min,
         "coins_per_yuan": int(crud.get_setting(db, "exchange_rate_coins_per_yuan", "100000")),
+        "is_newbie_withdraw": newbie,
+        "newbie_withdraw_coins": newbie_coins,
+        "newbie_ad_count": int(crud.get_setting(db, "newbie_withdraw_ad_count", "5")),
     }
 
 
@@ -63,14 +72,20 @@ def request_withdrawal(
     if not svc.is_authorized(current_user):
         raise HTTPException(status_code=400, detail="请先绑定微信收款")
 
-    min_withdraw = int(crud.get_setting(db, "min_withdraw_coins", "500000"))
-    if payload.coin_amount < min_withdraw:
-        raise HTTPException(status_code=400, detail=f"最低需要{min_withdraw}金币才能申请提现")
+    if crud.is_newbie_withdraw_eligible(db, current_user):
+        # 新人首提：固定为首提金额，忽略前端传的数额，防止改包提更多
+        coin_amount = int(crud.get_setting(db, "newbie_withdraw_coins", "30000"))
+        if current_user.coin_balance < coin_amount:
+            raise HTTPException(status_code=400, detail="金币还不够首提门槛，再看几次广告就能提啦")
+    else:
+        coin_amount = payload.coin_amount
+        min_withdraw = int(crud.get_setting(db, "min_withdraw_coins", "500000"))
+        if coin_amount < min_withdraw:
+            raise HTTPException(status_code=400, detail=f"最低需要{min_withdraw}金币才能申请提现")
+        if coin_amount > current_user.coin_balance:
+            raise HTTPException(status_code=400, detail="金币余额不足")
 
-    if payload.coin_amount > current_user.coin_balance:
-        raise HTTPException(status_code=400, detail="金币余额不足")
-
-    request = crud.create_withdrawal_request(db, current_user, payload.coin_amount)
+    request = crud.create_withdrawal_request(db, current_user, coin_amount)
     return schemas.WithdrawalRequestResponse(
         id=request.id,
         coin_amount=request.coin_amount,

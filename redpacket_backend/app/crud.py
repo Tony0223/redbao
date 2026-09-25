@@ -245,6 +245,9 @@ DEFAULT_SETTINGS = {
     "contact_phone": ("", "客服电话"),
     "exchange_rate_coins_per_yuan": ("100000", "多少金币兑换1元人民币"),
     "min_withdraw_coins": ("500000", "最低多少金币才能申请提现"),
+    "newbie_withdraw_enabled": ("true", "新人首提福利开关，true=开启"),
+    "newbie_withdraw_coins": ("30000", "新人首提固定提现金币数(默认30000≈0.3元)"),
+    "newbie_withdraw_ad_count": ("5", "新人首提大概要看几次广告(仅用于文案展示)"),
     "app_download_url": ("https://fir.xcxwo.com/sd9efqvp", "邀请落地页“立即下载”的地址(fir.im分发)"),
     "site_enabled": ("true", "网站总开关，true=用户可访问，false=只显示关闭提示"),
     "site_closed_msg": ("网站已关闭，请联系管理员", "网站关闭时给用户看的提示"),
@@ -306,6 +309,30 @@ def list_withdrawals_by_user(db: Session, user_id: int):
         .order_by(models.WithdrawalRequest.created_at.desc())
         .all()
     )
+
+
+def _count_withdrawals_by_status(db: Session, user_id: int, statuses) -> int:
+    return (
+        db.query(models.WithdrawalRequest)
+        .filter(
+            models.WithdrawalRequest.user_id == user_id,
+            models.WithdrawalRequest.status.in_(statuses),
+        )
+        .count()
+    )
+
+
+def is_newbie_withdraw_eligible(db: Session, user) -> bool:
+    """新人首提福利资格：功能开着 + 从没成功提现过 + 当前没有在途(待审/打款中)申请。
+    成功一次后就恢复正常门槛；驳回/失败不占用福利。"""
+    if get_setting(db, "newbie_withdraw_enabled", "true") != "true":
+        return False
+    done = _count_withdrawals_by_status(db, user.id, [models.WithdrawalStatus.SUCCESS])
+    live = _count_withdrawals_by_status(
+        db, user.id,
+        [models.WithdrawalStatus.PENDING, models.WithdrawalStatus.PROCESSING],
+    )
+    return done == 0 and live == 0
 
 
 # ==================== 后台管理账号 / 权限 ====================
