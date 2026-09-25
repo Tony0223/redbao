@@ -280,3 +280,20 @@ class AppSetting(Base):
     key = Column(String(64), unique=True, index=True, nullable=False)
     value = Column(String(500), nullable=True)
     description = Column(String(255), nullable=True)
+
+class AdminUser(Base):
+    """后台管理账号。
+
+    - is_super=True 为最高权限(admin)，能看所有菜单、能管理其他后台账号；
+    - 普通账号只能看 allowed_menus 里列出的菜单(逗号分隔的菜单key)。
+    密码用 pbkdf2 存成 "salt$hash"，不存明文。
+    """
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(64), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    is_super = Column(Boolean, nullable=False, default=False)
+    # 允许访问的菜单key，逗号分隔；is_super 时忽略此字段(全部可见)
+    allowed_menus = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())

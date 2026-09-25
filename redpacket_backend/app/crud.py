@@ -303,3 +303,84 @@ def list_withdrawals_by_user(db: Session, user_id: int):
         .order_by(models.WithdrawalRequest.created_at.desc())
         .all()
     )
+
+
+# ==================== 后台管理账号 / 权限 ====================
+import hashlib as _hashlib
+
+
+def hash_password(password: str, salt: str = None) -> str:
+    """pbkdf2 存成 "salt$hash"，不存明文。"""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    h = _hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+    return f"{salt}${h.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    if not stored or "$" not in stored:
+        return False
+    salt = stored.split("$", 1)[0]
+    return secrets.compare_digest(hash_password(password, salt), stored)
+
+
+def get_admin_user(db: Session, username: str):
+    return db.query(models.AdminUser).filter(models.AdminUser.username == username).first()
+
+
+def get_admin_user_by_id(db: Session, uid: int):
+    return db.query(models.AdminUser).filter(models.AdminUser.id == uid).first()
+
+
+def list_admin_users(db: Session):
+    return db.query(models.AdminUser).order_by(models.AdminUser.id.asc()).all()
+
+
+def create_admin_user(db: Session, username: str, password: str,
+                      is_super: bool, allowed_menus: str):
+    user = models.AdminUser(
+        username=username,
+        password_hash=hash_password(password),
+        is_super=is_super,
+        allowed_menus=allowed_menus or "",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_admin_user(db: Session, uid: int, allowed_menus: str = None,
+                      password: str = None):
+    user = get_admin_user_by_id(db, uid)
+    if user is None:
+        return None
+    if allowed_menus is not None:
+        user.allowed_menus = allowed_menus
+    if password:
+        user.password_hash = hash_password(password)
+    db.commit()
+    return user
+
+
+def delete_admin_user(db: Session, uid: int):
+    user = get_admin_user_by_id(db, uid)
+    if user is None or user.is_super:
+        return False   # 超管不允许删
+    db.delete(user)
+    db.commit()
+    return True
+
+
+def ensure_super_admin(db: Session, username: str, password: str) -> None:
+    """启动时确保存在一个超管账号；没有任何超管则用env里的账号密码建一个。"""
+    exists = db.query(models.AdminUser).filter(models.AdminUser.is_super == True).first()  # noqa: E712
+    if exists:
+        return
+    # 若同名普通账号已存在则升级为超管，否则新建
+    same = get_admin_user(db, username)
+    if same:
+        same.is_super = True
+        db.commit()
+        return
+    create_admin_user(db, username, password, is_super=True, allowed_menus="")

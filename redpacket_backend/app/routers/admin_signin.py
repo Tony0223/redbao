@@ -83,7 +83,7 @@ def show_signin(
             </div>
         </div>
     """
-    return HTMLResponse(content=render_page("signin", body))
+    return HTMLResponse(content=render_page("signin", body, admin))
 
 
 @router.post("/save")

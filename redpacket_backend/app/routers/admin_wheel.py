@@ -219,7 +219,7 @@ def show_wheel(
             </div>
         </div>
     """
-    return HTMLResponse(content=render_page("wheel", body))
+    return HTMLResponse(content=render_page("wheel", body, admin))
 
 
 @router.post("/save")

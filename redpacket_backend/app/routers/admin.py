@@ -12,10 +12,13 @@
 """
 import os
 import secrets
+import base64
+import hashlib
+import hmac
+import time
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -28,10 +31,34 @@ from app.database import get_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-security = HTTPBasic()
-
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "changeme")
+
+# 会话签名密钥：优先用独立env，否则退回admin密码派生，保证部署不配也能用
+SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", "") or (ADMIN_PASSWORD + "|redbao-admin")
+COOKIE_NAME = "admin_session"
+SESSION_MAX_AGE = 7 * 24 * 3600   # 登录保持7天
+
+# 可分配给普通账号的菜单（key 与 /admin/<key> 路径一致）
+MENU_ITEMS = [
+    ("reward-configs", "看广告奖励"),
+    ("rebate-config", "团长返利"),
+    ("signin", "每日签到"),
+    ("punch", "每日打卡"),
+    ("bonus", "福利活动"),
+    ("wheel", "幸运转盘"),
+    ("users", "用户列表"),
+    ("ad-logs", "广告流水"),
+    ("withdrawals", "提现申请"),
+    ("subsidy", "提现补贴"),
+    ("content", "公告/协议"),
+    ("feedback", "意见反馈"),
+    ("settings", "App/客服设置"),
+]
+ALL_MENU_KEYS = [k for k, _ in MENU_ITEMS]
+# 仅超管可见的“后台账号管理”菜单
+SUPER_MENU_KEY = "admin-users"
+SUPER_MENU_LABEL = "后台账号"
 
 PAGE_SIZE = 50
 
@@ -50,41 +77,101 @@ WITHDRAWAL_STATUS_LABELS = {
 }
 
 
-def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
-    if not (correct_username and correct_password):
+# ==================== 会话(登录态) ====================
+
+def _sign_session(username: str) -> str:
+    raw = f"{username}|{int(time.time())}"
+    b = base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
+    sig = hmac.new(SESSION_SECRET.encode("utf-8"), b.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{b}.{sig}"
+
+
+def _read_session(token: str):
+    """校验签名和有效期，返回用户名，非法返回 None。"""
+    if not token or "." not in token:
+        return None
+    b, sig = token.rsplit(".", 1)
+    expect = hmac.new(SESSION_SECRET.encode("utf-8"), b.encode("ascii"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expect):
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(b.encode("ascii")).decode("utf-8")
+        username, ts = raw.rsplit("|", 1)
+    except Exception:
+        return None
+    if int(time.time()) - int(ts) > SESSION_MAX_AGE:
+        return None
+    return username
+
+
+def _menu_key_for_path(path: str):
+    """从请求路径取菜单key：/admin/<key>/... -> <key>；/admin 或 /admin/ -> None。"""
+    p = path
+    if p.startswith("/admin"):
+        p = p[len("/admin"):]
+    p = p.strip("/")
+    if not p:
+        return None
+    return p.split("/")[0]
+
+
+def verify_admin(request: Request, db: Session = Depends(get_db)):
+    """登录态校验 + 菜单权限校验。未登录跳登录页，无权访问该菜单则403。"""
+    username = _read_session(request.cookies.get(COOKIE_NAME))
+    user = crud.get_admin_user(db, username) if username else None
+    if user is None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="账号或密码不对",
-            headers={"WWW-Authenticate": "Basic"},
+            status_code=status.HTTP_303_SEE_OTHER,
+            detail="未登录",
+            headers={"Location": "/admin/login"},
         )
-    return credentials.username
+    key = _menu_key_for_path(request.url.path)
+    if key == SUPER_MENU_KEY:
+        if not user.is_super:
+            raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    elif key in ALL_MENU_KEYS and not user.is_super:
+        allowed = [m for m in (user.allowed_menus or "").split(",") if m]
+        if key not in allowed:
+            raise HTTPException(status_code=403, detail="没有该菜单的访问权限")
+    return user
 
 
-def render_page(active: str, body: str) -> str:
-    nav_items = [
-        ("reward-configs", "看广告奖励"),
-        ("rebate-config", "团长返利"),
-        ("signin", "每日签到"),
-        ("punch", "每日打卡"),
-        ("bonus", "福利活动"),
-        ("wheel", "幸运转盘"),
-        ("users", "用户列表"),
-        ("ad-logs", "广告流水"),
-        ("withdrawals", "提现申请"),
-        ("subsidy", "提现补贴"),
-        ("content", "公告/协议"),
-        ("feedback", "意见反馈"),
-        ("settings", "App/客服设置"),
-    ]
-    nav_html = "".join(
-        f'<a href="/admin/{path}" style="margin-right:18px;padding:6px 0;'
-        f'text-decoration:none;font-weight:600;font-size:14px;white-space:nowrap;'
-        f'{"color:#2563eb;border-bottom:2px solid #2563eb;" if path == active else "color:#6b7280;"}'
-        f'">{label}</a>'
-        for path, label in nav_items
-    )
+def _visible_menus(user) -> list:
+    """当前账号能看到的菜单列表 [(key,label,is_super_only)]。"""
+    items = []
+    for key, label in MENU_ITEMS:
+        if user is None or user.is_super:
+            items.append((key, label))
+        else:
+            allowed = [m for m in (user.allowed_menus or "").split(",") if m]
+            if key in allowed:
+                items.append((key, label))
+    return items
+
+
+def render_page(active: str, body: str, user=None) -> str:
+    items = _visible_menus(user)
+    nav_html = ""
+    for key, label in items:
+        selected = key == active
+        nav_html += (
+            f'<a href="/admin/{key}" style="display:block;padding:10px 16px;margin-bottom:2px;'
+            f'text-decoration:none;font-size:14px;border-radius:8px;'
+            f'{"background:#2563eb;color:#fff;font-weight:600;" if selected else "color:#374151;"}'
+            f'">{label}</a>'
+        )
+    # 超管额外显示“后台账号”管理入口
+    if user is not None and getattr(user, "is_super", False):
+        selected = active == SUPER_MENU_KEY
+        nav_html += (
+            f'<a href="/admin/{SUPER_MENU_KEY}" style="display:block;padding:10px 16px;margin-bottom:2px;'
+            f'text-decoration:none;font-size:14px;border-radius:8px;'
+            f'{"background:#2563eb;color:#fff;font-weight:600;" if selected else "color:#374151;"}'
+            f'">{SUPER_MENU_LABEL}</a>'
+        )
+
+    uname = html.escape(getattr(user, "username", "") or "")
+    role = "超级管理员" if getattr(user, "is_super", False) else "管理员"
     return f"""
     <!DOCTYPE html>
     <html lang="zh-CN">
@@ -94,10 +181,21 @@ def render_page(active: str, body: str) -> str:
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
     <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-        background:#f9fafb;margin:0;padding:32px 16px;">
-        <div style="max-width:960px;margin:0 auto;">
-            <div style="border-bottom:1px solid #e5e7eb;margin-bottom:24px;overflow-x:auto;">{nav_html}</div>
-            {body}
+        background:#f9fafb;margin:0;">
+        <div style="display:flex;min-height:100vh;">
+            <div style="width:200px;flex-shrink:0;background:#fff;border-right:1px solid #e5e7eb;
+                padding:16px 10px;display:flex;flex-direction:column;">
+                <div style="font-size:16px;font-weight:700;color:#111827;padding:8px 16px 16px;">红包群后台</div>
+                <div style="flex:1;">{nav_html}</div>
+                <div style="border-top:1px solid #f3f4f6;padding:12px 16px 4px;">
+                    <div style="font-size:13px;color:#111827;">{uname}</div>
+                    <div style="font-size:12px;color:#9ca3af;margin-bottom:8px;">{role}</div>
+                    <a href="/admin/logout" style="font-size:13px;color:#dc2626;text-decoration:none;">退出登录</a>
+                </div>
+            </div>
+            <div style="flex:1;padding:32px;overflow-x:auto;">
+                <div style="max-width:960px;">{body}</div>
+            </div>
         </div>
     </body>
     </html>
@@ -206,7 +304,7 @@ def show_reward_configs(
         {render_tier_form(low_config, saved == "low")}
         {render_tier_form(high_config, saved == "high")}
     """
-    return HTMLResponse(content=render_page("reward-configs", body))
+    return HTMLResponse(content=render_page("reward-configs", body, admin))
 
 
 @router.post("/reward-configs/{tier}")
@@ -274,7 +372,7 @@ def show_rebate_config(
             </form>
         </div>
     """
-    return HTMLResponse(content=render_page("rebate-config", body))
+    return HTMLResponse(content=render_page("rebate-config", body, admin))
 
 
 @router.post("/rebate-config")
@@ -350,7 +448,7 @@ def show_users(
         {table_html}
         {pagination_html}
     """
-    return HTMLResponse(content=render_page("users", body))
+    return HTMLResponse(content=render_page("users", body, admin))
 
 
 # ---------- 广告流水 ----------
@@ -406,7 +504,7 @@ def show_ad_logs(
         {table_html}
         {pagination_html}
     """
-    return HTMLResponse(content=render_page("ad-logs", body))
+    return HTMLResponse(content=render_page("ad-logs", body, admin))
 
 
 # ---------- 提现申请 ----------
@@ -506,7 +604,7 @@ def show_withdrawals(
         {table_html}
         {pagination_html}
     """
-    return HTMLResponse(content=render_page("withdrawals", body))
+    return HTMLResponse(content=render_page("withdrawals", body, admin))
 
 
 def _get_withdrawal(db: Session, request_id: int) -> models.WithdrawalRequest:
@@ -621,7 +719,7 @@ def show_settings(
                 border-radius:8px;font-size:14px;cursor:pointer;">保存全部设置</button>
         </form>
     """
-    return HTMLResponse(content=render_page("settings", body))
+    return HTMLResponse(content=render_page("settings", body, admin))
 
 
 @router.post("/settings")
@@ -636,3 +734,202 @@ async def update_settings(
         if key in form:
             crud.set_setting(db, key, str(form[key]))
     return RedirectResponse(url="/admin/settings?saved=true", status_code=303)
+
+
+# ==================== 登录 / 登出 / 首页跳转 ====================
+
+def render_login(error: str = "") -> str:
+    err_html = (
+        f'<div style="color:#dc2626;font-size:13px;margin-bottom:12px;">{html.escape(error)}</div>'
+        if error else ""
+    )
+    return f"""
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <title>后台登录</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+        background:#f3f4f6;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;">
+        <form method="post" action="/admin/login"
+            style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:32px;width:320px;">
+            <div style="font-size:20px;font-weight:700;color:#111827;margin-bottom:20px;text-align:center;">红包群后台</div>
+            {err_html}
+            <label style="display:block;font-size:13px;color:#374151;margin-bottom:4px;">账号</label>
+            <input name="username" required style="width:100%;box-sizing:border-box;padding:10px;
+                border:1px solid #d1d5db;border-radius:8px;margin-bottom:14px;" />
+            <label style="display:block;font-size:13px;color:#374151;margin-bottom:4px;">密码</label>
+            <input name="password" type="password" required style="width:100%;box-sizing:border-box;padding:10px;
+                border:1px solid #d1d5db;border-radius:8px;margin-bottom:20px;" />
+            <button type="submit" style="width:100%;background:#2563eb;color:#fff;border:none;padding:11px;
+                border-radius:8px;font-size:15px;cursor:pointer;">登录</button>
+        </form>
+    </body>
+    </html>
+    """
+
+
+@router.get("/login", response_class=HTMLResponse)
+def login_page(error: int = 0):
+    return HTMLResponse(content=render_login("账号或密码不对" if error else ""))
+
+
+@router.post("/login")
+def login_submit(
+    username: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = crud.get_admin_user(db, username.strip())
+    if user is None or not crud.verify_password(password, user.password_hash):
+        return RedirectResponse(url="/admin/login?error=1", status_code=303)
+    resp = RedirectResponse(url="/admin", status_code=303)
+    resp.set_cookie(
+        COOKIE_NAME, _sign_session(user.username),
+        max_age=SESSION_MAX_AGE, httponly=True, samesite="lax", path="/admin",
+    )
+    return resp
+
+
+@router.get("/logout")
+def logout():
+    resp = RedirectResponse(url="/admin/login", status_code=303)
+    resp.delete_cookie(COOKIE_NAME, path="/admin")
+    return resp
+
+
+@router.get("")
+def admin_index(user=Depends(verify_admin)):
+    menus = _visible_menus(user)
+    if menus:
+        target = menus[0][0]
+    elif user.is_super:
+        target = SUPER_MENU_KEY
+    else:
+        target = "login"
+    return RedirectResponse(url=f"/admin/{target}", status_code=303)
+
+
+# ==================== 后台账号管理（仅超管） ====================
+
+def _menu_checkboxes(selected: set) -> str:
+    boxes = ""
+    for key, label in MENU_ITEMS:
+        checked = "checked" if key in selected else ""
+        boxes += (
+            f'<label style="display:inline-block;width:150px;margin:4px 0;font-size:13px;color:#374151;">'
+            f'<input type="checkbox" name="menus" value="{key}" {checked}/> {label}</label>'
+        )
+    return boxes
+
+
+@router.get("/admin-users", response_class=HTMLResponse)
+def admin_users_page(
+    saved: int = 0,
+    err: str = "",
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    menu_label = dict(MENU_ITEMS)
+    rows = []
+    for u in crud.list_admin_users(db):
+        role = "超级管理员" if u.is_super else "管理员"
+        if u.is_super:
+            menus_txt = "全部"
+            edit_html = "—"
+        else:
+            allowed = [m for m in (u.allowed_menus or "").split(",") if m]
+            menus_txt = "、".join(menu_label.get(m, m) for m in allowed) or "—"
+            edit_html = (
+                f'<details><summary style="cursor:pointer;color:#2563eb;font-size:13px;">编辑</summary>'
+                f'<form method="post" action="/admin/admin-users/{u.id}/update" style="margin-top:8px;">'
+                f'<div style="margin-bottom:8px;">{_menu_checkboxes(set(allowed))}</div>'
+                f'<input name="password" placeholder="重置密码(留空不改)" style="padding:6px;'
+                f'border:1px solid #d1d5db;border-radius:6px;margin-right:8px;" />'
+                f'<button type="submit" style="background:#2563eb;color:#fff;border:none;padding:6px 14px;'
+                f'border-radius:6px;cursor:pointer;">保存</button></form>'
+                f'<form method="post" action="/admin/admin-users/{u.id}/delete" style="margin-top:8px;" '
+                f'onsubmit="return confirm(\'确定删除该账号？\')">'
+                f'<button type="submit" style="background:#dc2626;color:#fff;border:none;padding:6px 14px;'
+                f'border-radius:6px;cursor:pointer;">删除账号</button></form></details>'
+            )
+        rows.append([html.escape(u.username), role, menus_txt, edit_html])
+
+    table = render_table(["账号", "角色", "可见菜单", "操作"], rows)
+
+    tip = ""
+    if saved:
+        tip = ('<div style="background:#dcfce7;color:#166534;padding:10px 16px;border-radius:8px;'
+               'margin-bottom:16px;">✅ 已保存</div>')
+    elif err == "dup":
+        tip = ('<div style="background:#fee2e2;color:#991b1b;padding:10px 16px;border-radius:8px;'
+               'margin-bottom:16px;">账号已存在</div>')
+    elif err == "empty":
+        tip = ('<div style="background:#fee2e2;color:#991b1b;padding:10px 16px;border-radius:8px;'
+               'margin-bottom:16px;">账号和密码不能为空</div>')
+
+    create_form = f"""
+    <div style="border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-top:24px;background:#fff;">
+        <h2 style="margin-top:0;color:#111827;font-size:16px;">新建后台账号</h2>
+        <form method="post" action="/admin/admin-users/create">
+            <div style="margin-bottom:12px;">
+                <input name="username" placeholder="账号" required style="padding:8px;border:1px solid #d1d5db;
+                    border-radius:6px;margin-right:8px;" />
+                <input name="password" placeholder="密码" required style="padding:8px;border:1px solid #d1d5db;
+                    border-radius:6px;" />
+            </div>
+            <div style="margin-bottom:8px;font-size:13px;color:#6b7280;">可见菜单：</div>
+            <div style="margin-bottom:12px;">{_menu_checkboxes(set())}</div>
+            <button type="submit" style="background:#16a34a;color:#fff;border:none;padding:9px 20px;
+                border-radius:8px;font-size:14px;cursor:pointer;">创建账号</button>
+        </form>
+    </div>
+    """
+    body = f'<h1 style="color:#111827;">后台账号管理</h1>{tip}{table}{create_form}'
+    return HTMLResponse(content=render_page(SUPER_MENU_KEY, body, admin))
+
+
+@router.post("/admin-users/create")
+async def admin_users_create(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    form = await request.form()
+    username = (form.get("username") or "").strip()
+    password = (form.get("password") or "").strip()
+    if not username or not password:
+        return RedirectResponse(url="/admin/admin-users?err=empty", status_code=303)
+    if crud.get_admin_user(db, username):
+        return RedirectResponse(url="/admin/admin-users?err=dup", status_code=303)
+    menus = ",".join(m for m in form.getlist("menus") if m in ALL_MENU_KEYS)
+    crud.create_admin_user(db, username, password, is_super=False, allowed_menus=menus)
+    return RedirectResponse(url="/admin/admin-users?saved=1", status_code=303)
+
+
+@router.post("/admin-users/{uid}/update")
+async def admin_users_update(
+    uid: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    target = crud.get_admin_user_by_id(db, uid)
+    if target is not None and not target.is_super:
+        form = await request.form()
+        password = (form.get("password") or "").strip()
+        menus = ",".join(m for m in form.getlist("menus") if m in ALL_MENU_KEYS)
+        crud.update_admin_user(db, uid, allowed_menus=menus, password=(password or None))
+    return RedirectResponse(url="/admin/admin-users?saved=1", status_code=303)
+
+
+@router.post("/admin-users/{uid}/delete")
+def admin_users_delete(
+    uid: int,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    crud.delete_admin_user(db, uid)
+    return RedirectResponse(url="/admin/admin-users?saved=1", status_code=303)
