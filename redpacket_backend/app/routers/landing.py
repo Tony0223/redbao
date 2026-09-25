@@ -33,7 +33,7 @@ def _page(invite_code: str, download_url: str, valid: bool) -> str:
     else:
         header = (f'<div class="code">我的邀请码：<b>{code}</b>'
                   f'<span class="copy" onclick="copyCode()">复制</span></div>')
-        button = '<a class="btn" onclick="download()">立即下载</a>'
+        button = '<a class="btn" onclick="startDownload()">立即下载</a>'
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -125,7 +125,7 @@ function copyCode() {{
   toast(copyText(TOKEN) ? '邀请码已复制' : '复制失败，请手动记下邀请码');
 }}
 
-function download() {{
+function startDownload() {{
   copyText(TOKEN);   // 先把口令写进剪贴板，App 首次启动会读它自动绑定
   if (!DOWNLOAD_URL) {{
     toast('下载功能开发中，敬请期待');
