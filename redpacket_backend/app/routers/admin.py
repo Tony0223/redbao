@@ -675,6 +675,7 @@ SETTINGS_SECTIONS = [
         ("update_notes", "更新说明", "text"),
         ("update_url", "下载链接", "text"),
         ("force_update", "是否强制更新(true/false)", "text"),
+        ("app_download_url", "App下载地址(邀请落地页立即下载)", "text"),
     ]),
     ("客服联系方式", [
         ("contact_wechat", "客服微信号", "text"),
