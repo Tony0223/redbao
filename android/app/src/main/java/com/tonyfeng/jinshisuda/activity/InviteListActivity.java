@@ -66,6 +66,8 @@ public class InviteListActivity extends AppCompatActivity {
         }
         setContentView(R.layout.activity_invite_list);
 
+        findViewById(R.id.btn_back).setOnClickListener(v -> finish());
+
         mode = getIntent().getStringExtra(EXTRA_MODE);
         if (mode == null) mode = MODE_MEMBERS;
         coinsPerYuan = getIntent().getLongExtra(EXTRA_COINS_PER_YUAN, 100000);
