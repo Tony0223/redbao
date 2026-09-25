@@ -2,51 +2,98 @@ package com.tonyfeng.jinshisuda;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.tonyfeng.jinshisuda.api.ApiClient;
 import com.tonyfeng.jinshisuda.api.UserManager;
 import com.tonyfeng.jinshisuda.api.WeChatLoginManager;
+
+import org.json.JSONObject;
 
 /**
  * 登录页 = APP 启动入口。
  *
- * 流程改动：以前是直接进首页，用到需要登录的功能时才现拉微信授权、登完再刷新，
- * 体验割裂。现在改成——启动先到这里判断登录：
- * - 已登录：直接进首页，本页一闪而过；
- * - 未登录：展示"微信登录"按钮，用户点了拉起微信授权；授权换 token 由
- *   WXEntryActivity 完成并存本地，返回本页后 onResume 检测到已登录，再进首页。
+ * 启动流程：
+ * 1. 先拉后台配置查“网站开关”：关闭时只显示“网站已关闭”提示，拦住一切；
+ * 2. 网站开启时——已登录直接走开屏进首页；未登录展示“微信登录”按钮。
  *
- * 产品决策：必须登录才能进（无跳过入口）；未装微信时 WeChatLoginManager 会提示，
- * 用户停留在本页。
+ * 产品决策：必须登录才能进（无跳过入口）。拉不到配置(离线等)时按开启处理，不误伤。
  */
 public class LoginActivity extends AppCompatActivity {
 
-    /** 防止 onCreate 直进首页后 onResume 再触发一次跳转 */
-    private boolean navigated = false;
+    private boolean navigated = false;   // 已跳走
+    private boolean siteClosed = false;  // 网站被关闭
+    private boolean siteChecked = false; // 配置已拉到(拿到网站开关结果)
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // 已登录就别停在登录页，直接走开屏
-        if (UserManager.isLoggedIn(this)) {
-            goNext();
-            return;
-        }
-
         setContentView(R.layout.activity_login);
         findViewById(R.id.btn_wechat_login).setOnClickListener(v ->
                 WeChatLoginManager.login(LoginActivity.this));
+
+        checkSite();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // 从微信授权返回后，token 已由 WXEntryActivity 存好，这里检测到即走开屏再进首页
-        if (!navigated && UserManager.isLoggedIn(this)) {
+        // 网站开关结果出来前不做任何跳转，避免关闭时还漏进去
+        if (navigated || siteClosed || !siteChecked) return;
+        if (UserManager.isLoggedIn(this)) {
             goNext();
         }
+    }
+
+    /** 拉后台配置，判断网站开关 */
+    private void checkSite() {
+        ApiClient.getAppConfig(new ApiClient.ApiCallback() {
+            @Override
+            public void onSuccess(JSONObject d) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    siteChecked = true;
+                    if (!d.optBoolean("site_enabled", true)) {
+                        siteClosed = true;
+                        showClosed(d.optString("site_closed_msg", "网站已关闭，请联系管理员"));
+                        return;
+                    }
+                    if (UserManager.isLoggedIn(LoginActivity.this)) {
+                        goNext();
+                    }
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    // 拉不到配置就按网站开启处理，别把人挡在门外
+                    siteChecked = true;
+                    if (UserManager.isLoggedIn(LoginActivity.this)) {
+                        goNext();
+                    }
+                });
+            }
+        });
+    }
+
+    /** 网站关闭：整屏只显示提示，不能再往下走 */
+    private void showClosed(String msg) {
+        TextView tv = new TextView(this);
+        tv.setText(msg);
+        tv.setGravity(Gravity.CENTER);
+        tv.setTextColor(0xFF666666);
+        tv.setTextSize(16);
+        tv.setPadding(48, 0, 48, 0);
+        tv.setBackgroundColor(0xFFF5F5F5);
+        setContentView(tv, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     /** 登录成功后先进开屏页，开屏结束再由它进首页 */

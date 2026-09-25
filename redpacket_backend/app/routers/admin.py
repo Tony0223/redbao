@@ -57,8 +57,14 @@ MENU_ITEMS = [
 ]
 ALL_MENU_KEYS = [k for k, _ in MENU_ITEMS]
 # 仅超管可见的“后台账号管理”菜单
+# 仅超管可见的菜单
+SUPER_MENUS = [
+    ("admin-users", "后台账号"),
+    ("site-control", "网站开关"),
+]
+SUPER_MENU_KEYS = [k for k, _ in SUPER_MENUS]
+# 兼容旧引用
 SUPER_MENU_KEY = "admin-users"
-SUPER_MENU_LABEL = "后台账号"
 
 PAGE_SIZE = 50
 
@@ -126,7 +132,7 @@ def verify_admin(request: Request, db: Session = Depends(get_db)):
             headers={"Location": "/admin/login"},
         )
     key = _menu_key_for_path(request.url.path)
-    if key == SUPER_MENU_KEY:
+    if key in SUPER_MENU_KEYS:
         if not user.is_super:
             raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     elif key in ALL_MENU_KEYS and not user.is_super:
@@ -160,15 +166,16 @@ def render_page(active: str, body: str, user=None) -> str:
             f'{"background:#2563eb;color:#fff;font-weight:600;" if selected else "color:#374151;"}'
             f'">{label}</a>'
         )
-    # 超管额外显示“后台账号”管理入口
+    # 超管额外显示专属菜单（后台账号、网站开关）
     if user is not None and getattr(user, "is_super", False):
-        selected = active == SUPER_MENU_KEY
-        nav_html += (
-            f'<a href="/admin/{SUPER_MENU_KEY}" style="display:block;padding:10px 16px;margin-bottom:2px;'
-            f'text-decoration:none;font-size:14px;border-radius:8px;'
-            f'{"background:#2563eb;color:#fff;font-weight:600;" if selected else "color:#374151;"}'
-            f'">{SUPER_MENU_LABEL}</a>'
-        )
+        for skey, slabel in SUPER_MENUS:
+            selected = active == skey
+            nav_html += (
+                f'<a href="/admin/{skey}" style="display:block;padding:10px 16px;margin-bottom:2px;'
+                f'text-decoration:none;font-size:14px;border-radius:8px;'
+                f'{"background:#2563eb;color:#fff;font-weight:600;" if selected else "color:#374151;"}'
+                f'">{slabel}</a>'
+            )
 
     uname = html.escape(getattr(user, "username", "") or "")
     role = "超级管理员" if getattr(user, "is_super", False) else "管理员"
@@ -933,3 +940,59 @@ def admin_users_delete(
 ):
     crud.delete_admin_user(db, uid)
     return RedirectResponse(url="/admin/admin-users?saved=1", status_code=303)
+
+
+# ==================== 网站开关（仅超管） ====================
+
+@router.get("/site-control", response_class=HTMLResponse)
+def site_control_page(
+    saved: int = 0,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    enabled = crud.get_setting(db, "site_enabled", "true") != "false"
+    msg = crud.get_setting(db, "site_closed_msg", "网站已关闭，请联系管理员")
+
+    tip = ('<div style="background:#dcfce7;color:#166534;padding:10px 16px;border-radius:8px;'
+           'margin-bottom:16px;">✅ 已保存</div>') if saved else ""
+
+    status_html = (
+        '<span style="color:#16a34a;font-weight:700;">运行中（用户可正常访问）</span>'
+        if enabled else
+        '<span style="color:#dc2626;font-weight:700;">已关闭（用户只看到关闭提示）</span>'
+    )
+    checked = "checked" if enabled else ""
+    body = f"""
+        <h1 style="color:#111827;">网站开关</h1>
+        {tip}
+        <div style="border:1px solid #e5e7eb;border-radius:12px;padding:24px;background:#fff;max-width:560px;">
+            <div style="margin-bottom:16px;">当前状态：{status_html}</div>
+            <form method="post" action="/admin/site-control">
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:15px;color:#374151;">
+                    <input type="checkbox" name="site_enabled" {checked} style="width:18px;height:18px;" />
+                    开启网站（打勾=开启，取消勾选=关闭）
+                </label>
+                <label style="display:block;font-size:13px;color:#6b7280;margin-bottom:4px;">关闭时给用户的提示文字</label>
+                <textarea name="site_closed_msg" rows="2" style="width:100%;box-sizing:border-box;padding:10px;
+                    border:1px solid #d1d5db;border-radius:8px;margin-bottom:16px;">{html.escape(msg)}</textarea>
+                <button type="submit" style="background:#2563eb;color:#fff;border:none;padding:10px 24px;
+                    border-radius:8px;font-size:14px;cursor:pointer;">保存</button>
+            </form>
+        </div>
+    """
+    return HTMLResponse(content=render_page("site-control", body, admin))
+
+
+@router.post("/site-control")
+async def site_control_save(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    form = await request.form()
+    enabled = form.get("site_enabled") == "on"
+    msg = (form.get("site_closed_msg") or "").strip()
+    crud.set_setting(db, "site_enabled", "true" if enabled else "false")
+    if msg:
+        crud.set_setting(db, "site_closed_msg", msg)
+    return RedirectResponse(url="/admin/site-control?saved=1", status_code=303)
