@@ -12,6 +12,7 @@ import com.bytedance.sdk.openadsdk.CSJSplashAd;
 import com.bytedance.sdk.openadsdk.TTAdNative;
 import com.bytedance.sdk.openadsdk.TTAdSdk;
 import com.bytedance.sdk.openadsdk.mediation.ad.MediationAdSlot;
+import com.tonyfeng.jinshisuda.api.AdRevenueReporter;
 
 /**
  * 开屏广告。登录成功后、进首页前展示一次；广告自带倒计时/跳过，
@@ -77,6 +78,7 @@ public class SplashAdHelper {
                 ad.setSplashAdListener(new CSJSplashAd.SplashAdListener() {
                     @Override
                     public void onSplashAdShow(CSJSplashAd a) {
+                        AdRevenueReporter.reportSplash(activity, a);   // 代理分成：上报真实eCPM
                     }
 
                     @Override

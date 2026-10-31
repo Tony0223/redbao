@@ -8,8 +8,9 @@ import com.bytedance.sdk.openadsdk.AdSlot;
 import com.bytedance.sdk.openadsdk.TTAdNative;
 import com.bytedance.sdk.openadsdk.TTAdSdk;
 import com.bytedance.sdk.openadsdk.TTFeedAd;
-import com.bytedance.sdk.openadsdk.TTNativeAd;
 import com.bytedance.sdk.openadsdk.mediation.ad.MediationAdSlot;
+import com.bytedance.sdk.openadsdk.mediation.ad.MediationExpressRenderListener;
+import com.tonyfeng.jinshisuda.api.AdRevenueReporter;
 
 import java.util.List;
 
@@ -85,10 +86,13 @@ public class NativeAdHelper {
                 TTFeedAd feedAd = list.get(0);
                 Log.d(TAG, "信息流广告加载成功，开始渲染");
 
-                feedAd.setExpressRenderListener(new TTNativeAd.ExpressRenderListener() {
+                // 用 MediationExpressRenderListener：比旧接口多了 onAdShow(上报eCPM要在展示后)和 onRenderFail
+                feedAd.setExpressRenderListener(new MediationExpressRenderListener() {
                     @Override
                     public void onRenderSuccess(View view, float v, float v1, boolean b) {
-                        View adView = view != null ? view : feedAd.getAdView();
+                        // 官方文档：优先用 getAdView()，不要直接用回调参数里的 view
+                        View adView = feedAd.getAdView();
+                        if (adView == null) adView = view;
                         if (adView == null) {
                             if (callback != null) {
                                 callback.onAdFail("广告View为空");
@@ -99,6 +103,23 @@ public class NativeAdHelper {
                         if (callback != null) {
                             callback.onAdReady(feedAd, adView);
                         }
+                    }
+
+                    @Override
+                    public void onRenderFail(View view, String msg, int code) {
+                        Log.e(TAG, "信息流广告渲染失败: code=" + code + " msg=" + msg);
+                        if (callback != null) {
+                            callback.onAdFail("渲染失败: " + msg);
+                        }
+                    }
+
+                    @Override
+                    public void onAdClick() {
+                    }
+
+                    @Override
+                    public void onAdShow() {
+                        AdRevenueReporter.reportFeed(activity, feedAd);   // 代理分成：上报真实eCPM
                     }
                 });
 

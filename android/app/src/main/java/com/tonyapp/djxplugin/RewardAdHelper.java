@@ -10,6 +10,7 @@ import com.bytedance.sdk.openadsdk.TTAdNative;
 import com.bytedance.sdk.openadsdk.TTAdSdk;
 import com.bytedance.sdk.openadsdk.TTRewardVideoAd;
 import com.bytedance.sdk.openadsdk.mediation.ad.MediationAdSlot;
+import com.tonyfeng.jinshisuda.api.AdRevenueReporter;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -88,6 +89,7 @@ public class RewardAdHelper {
             @Override
             public void onAdShow() {
                 Log.d(TAG, "广告展示");
+                AdRevenueReporter.reportReward(activity, ttRewardVideoAd);   // 代理分成：上报真实eCPM
             }
 
             @Override
