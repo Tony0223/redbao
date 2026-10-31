@@ -1,0 +1,48 @@
+{
+  "name": "tonyapp-native-plugins",
+  "id": "tonyapp-native-plugins",
+  "version": "1.0.0",
+  "description": "短剧内容SDK + 红包群广告 原生插件（同一个aar）",
+  "_dp_type": "nativeplugin",
+  "_dp_nativeplugin": {
+    "android": {
+      "plugins": [
+        {
+          "type": "module",
+          "name": "tonyapp-djx-native",
+          "class": "com.tonyapp.djxplugin.DjxNativeModule"
+        },
+        {
+          "type": "module",
+          "name": "tonyapp-redpacket-native",
+          "class": "com.tonyapp.djxplugin.redpacket.RedPacketModule"
+        }
+      ],
+      "integrateType": "aar",
+      "abis": ["armeabi-v7a", "arm64-v8a"],
+      "hasSo": false,
+      "minSdkVersion": 24,
+      "permissions": [
+        "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+        "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+        "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>"
+      ],
+      "abstracts": [
+        {
+          "type": "activity",
+          "path": "res/xml/activity.xml"
+        }
+      ],
+      "compileOptions": {
+        "sourceCompatibility": "1.8",
+        "targetCompatibility": "1.8"
+      }
+    }
+  },
+  "dcloudext": {
+    "category": ["Native", "Module"],
+    "sample": "",
+    "permissions": []
+  },
+  "keywords": ["短剧", "红包群", "穿山甲", "gromore"]
+}

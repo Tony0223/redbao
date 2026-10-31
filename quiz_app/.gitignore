@@ -1,0 +1,11 @@
+backend/__pycache__/
+backend/.venv/
+backend/quiz.db
+.env
+deploy/certbot/conf/*
+deploy/certbot/www/*
+!deploy/certbot/conf/.gitkeep
+!deploy/certbot/www/.gitkeep
+frontend/unpackage/
+frontend/node_modules/
+.DS_Store

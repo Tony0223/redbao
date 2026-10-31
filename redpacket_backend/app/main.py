@@ -21,6 +21,8 @@ from app.routers import admin_content, mine
 from app import feedback_models                      # noqa: F401
 from app.routers import admin_feedback, feedback
 
+from app.routers import download
+
 logger = logging.getLogger("main")
 
 # 启动时自动建表（表已存在则跳过）。
@@ -66,6 +68,7 @@ app.include_router(mine.router)
 app.include_router(admin_content.router)
 app.include_router(feedback.router)
 app.include_router(admin_feedback.router)
+app.include_router(download.router)
 
 
 @app.get("/api/health")

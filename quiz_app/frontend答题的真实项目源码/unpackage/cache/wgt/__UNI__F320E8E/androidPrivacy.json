@@ -1,0 +1,16 @@
+{
+    "version" : "3",
+    "prompt" : "template",
+    "title" : "用户协议与隐私政策",
+    "message" : "　　欢迎使用金石速答。请你审慎阅读并充分理解<a href=\"https://zero-start.online/agreement\">《用户协议》</a>和<a href=\"https://zero-start.online/privacy\">《隐私政策》</a>。我们会在你同意后初始化 DCloud App 引擎，并按政策说明处理必要的账号、学习记录、设备标识及运行信息；应用接入第三方广告 SDK（穿山甲/GroMore），可能使用设备标识用于广告投放与效果统计。不同意前不会进入业务页面或发起业务网络请求。若你同意，请点击“同意并继续”。",
+    "buttonAccept" : "同意并继续",
+    "buttonRefuse" : "不同意并退出",
+    "hrefLoader" : "system",
+    "backToExit" : "true",
+    "disagreeMode" : {
+        "support" : false,
+        "loadNativePlugins" : false,
+        "visitorEntry" : false,
+        "showAlways" : true
+    }
+}

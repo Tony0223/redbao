@@ -1,0 +1,9 @@
+{
+  "name": "quiz-planet-uniapp-vue2",
+  "version": "1.0.0",
+  "private": true,
+  "description": "答题星球 uni-app Vue2 客户端",
+  "uni-app": {
+    "scripts": {}
+  }
+}

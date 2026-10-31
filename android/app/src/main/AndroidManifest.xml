@@ -5,6 +5,22 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+
+    <!--
+      targetSdk 30+ 的包可见性限制：App 默认查不到别的 App 装没装。
+      微信 SDK 的 isWXAppInstalled() 要能查到微信包，否则会误判"未安装微信"导致登录失败。
+      这段声明了需要查询的外部 App，缺了它微信登录/分享/支付在高 targetSdk 下都会出问题。
+    -->
+    <queries>
+        <!-- 微信：登录、分享、支付授权 -->
+        <package android:name="com.tencent.mm" />
+        <!-- 打开网页：检查更新跳下载链接、邀请落地页等 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MyApplication"
         android:allowBackup="true"

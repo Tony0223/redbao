@@ -5,7 +5,7 @@
 → 新用户装好首次打开 App，从剪贴板读出邀请码 → 微信登录注册时自动绑定邀请关系。
 
 口令格式要和 App 端 InviteCodeStore 的解析规则保持一致：金石速答邀请码:ABC123
-下载地址在后台"App/客服设置 → 下载链接"里配，没配就提示"开发中"。
+下载地址在后台"App/客服设置 → App下载地址"里配，默认指向自己服务器托管的 apk。
 """
 import html
 
@@ -20,6 +20,9 @@ router = APIRouter(tags=["landing"])
 
 APP_NAME = "金石速答"
 TOKEN_PREFIX = f"{APP_NAME}邀请码:"
+
+# 自己服务器托管的 apk 默认地址。后台"App下载地址"配了就用后台的。
+DEFAULT_DOWNLOAD_URL = "https://hongbao.zero-start.online/download/jinshisuda.apk"
 
 
 def _page(invite_code: str, download_url: str, valid: bool) -> str:
@@ -71,6 +74,12 @@ def _page(invite_code: str, download_url: str, valid: bool) -> str:
   .toast {{ position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
             background:rgba(0,0,0,.8); color:#fff; padding:12px 22px; border-radius:8px;
             font-size:15px; display:none; z-index:99; }}
+  /* 微信里打开时顶部的引导遮罩 */
+  .wx-mask {{ position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:100; display:none; }}
+  .wx-mask img {{ position:absolute; top:10px; right:16px; width:220px; }}
+  .wx-mask .wx-txt {{ position:absolute; top:150px; left:0; right:0; text-align:center;
+                      color:#fff; font-size:17px; line-height:1.9; padding:0 30px; }}
+  .wx-mask .wx-arrow {{ position:absolute; top:12px; right:30px; color:#FFD84D; font-size:40px; }}
 </style>
 </head>
 <body>
@@ -96,9 +105,19 @@ def _page(invite_code: str, download_url: str, valid: bool) -> str:
 
   <div class="toast" id="toast"></div>
 
+  <!-- 微信内打开 apk 会被拦，弹这个引导用户去浏览器 -->
+  <div class="wx-mask" id="wxMask" onclick="this.style.display='none'">
+    <div class="wx-arrow">↗</div>
+    <div class="wx-txt">请点击右上角「···」<br>选择「在浏览器中打开」<br>才能下载安装</div>
+  </div>
+
 <script>
 var TOKEN = "{token}";
 var DOWNLOAD_URL = "{url_js}";
+
+function isWeChat() {{
+  return /micromessenger/i.test(navigator.userAgent);
+}}
 
 function toast(msg) {{
   var t = document.getElementById('toast');
@@ -131,6 +150,11 @@ function startDownload() {{
     toast('下载功能开发中，敬请期待');
     return;
   }}
+  // 微信内置浏览器拦 apk 下载，先弹引导让用户去系统浏览器
+  if (isWeChat()) {{
+    document.getElementById('wxMask').style.display = 'block';
+    return;
+  }}
   setTimeout(function () {{ location.href = DOWNLOAD_URL; }}, 300);
 }}
 </script>
@@ -142,6 +166,6 @@ function startDownload() {{
 def invite_landing(invite_code: str, db: Session = Depends(get_db)):
     invite_code = (invite_code or "").strip()[:16]
     inviter = crud.get_user_by_invite_code(db, invite_code) if invite_code else None
-    # 下载地址：邀请落地页专用，后台“App/客服设置 → App下载地址”可配，默认 fir.im 分发
-    download_url = crud.get_setting(db, "app_download_url", "https://fir.xcxwo.com/sd9efqvp").strip()
+    # 下载地址：后台"App/客服设置 → App下载地址"可配，默认走自己服务器托管的 apk
+    download_url = crud.get_setting(db, "app_download_url", DEFAULT_DOWNLOAD_URL).strip()
     return HTMLResponse(content=_page(invite_code, download_url, inviter is not None))

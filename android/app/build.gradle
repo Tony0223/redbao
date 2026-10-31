@@ -7,7 +7,7 @@ android {
     defaultConfig {
         applicationId "com.tonyfeng.jinshisuda"
         minSdkVersion 24
-        targetSdkVersion 32
+        targetSdkVersion 33
         versionCode 1
         versionName "1.0"
         multiDexEnabled true

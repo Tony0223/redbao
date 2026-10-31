@@ -1,0 +1,134 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: quiz-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在.env中设置MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-quiz_app}
+      MYSQL_USER: ${MYSQL_USER:-quiz_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在.env中设置MYSQL_PASSWORD}
+      TZ: ${APP_TIMEZONE:-Asia/Shanghai}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - backend_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: quiz-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-quiz_app}
+      MYSQL_USER: ${MYSQL_USER:-quiz_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在.env中设置MYSQL_PASSWORD}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - backend_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: registry.cn-hangzhou.aliyuncs.com/automatic_transaction/nginx:1.24-alpine
+    container_name: quiz-nginx
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?请在.env中设置API_DOMAIN}
+    entrypoint: ["/bin/sh", "/opt/quiz-nginx/start-nginx.sh"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/start-nginx.sh:/opt/quiz-nginx/start-nginx.sh:ro
+      - ./deploy/nginx/quiz-api-http.conf.template:/opt/quiz-nginx/quiz-api-http.conf.template:ro
+      - ./deploy/nginx/quiz-api-https.conf.template:/opt/quiz-nginx/quiz-api-https.conf.template:ro
+      - ./deploy/certbot/www:/var/www/certbot:ro
+      - ./deploy/certbot/conf:/etc/letsencrypt:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/nginx-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - backend_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: quiz-certbot
+    restart: always
+    depends_on:
+      nginx:
+        condition: service_healthy
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?请在.env中设置API_DOMAIN}
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:?请在.env中设置CERTBOT_EMAIL}
+    volumes:
+      - ./deploy/certbot/www:/var/www/certbot
+      - ./deploy/certbot/conf:/etc/letsencrypt
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        trap exit TERM
+        while :; do
+          certbot renew --webroot --webroot-path /var/www/certbot --quiet
+          sleep 12h & wait $${!}
+        done
+    networks:
+      - backend_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  mysql_data:
+
+networks:
+  backend_network:
+    driver: bridge
