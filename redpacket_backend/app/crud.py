@@ -183,8 +183,13 @@ def generate_unique_invite_code(db: Session) -> str:
     alphabet = string.ascii_uppercase + string.digits
     while True:
         code = "".join(random.choices(alphabet, k=6))
-        if get_user_by_invite_code(db, code) is None:
+        if get_user_by_invite_code(db, code) is None and not _is_agent_code(db, code):
             return code
+
+
+def _is_agent_code(db: Session, code: str) -> bool:
+    from app.agent_models import Agent  # 局部导入，避免循环依赖
+    return db.query(Agent.id).filter(Agent.invite_code == code).first() is not None
 
 
 def create_user(
@@ -211,6 +216,11 @@ def create_user(
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # 用的是代理专属邀请码：归属到该代理(不是用户邀请码时才会命中)
+    if inviter_code and user.invited_by_user_id is None:
+        from app import agent_service  # 局部导入，避免循环依赖
+        agent_service.bind_user_by_code(db, user, inviter_code)
     return user
 
 
@@ -248,6 +258,8 @@ DEFAULT_SETTINGS = {
     "newbie_withdraw_enabled": ("true", "新人首提福利开关，true=开启"),
     "newbie_withdraw_coins": ("30000", "新人首提固定提现金币数(默认30000≈0.3元)"),
     "newbie_withdraw_ad_count": ("5", "新人首提大概要看几次广告(仅用于文案展示)"),
+    "agent_ecpm_cap_fen": ("50000", "代理分成：单次上报eCPM上限(分/千次)，防伪造刷量，默认500元"),
+    "ad_revenue_daily_limit": ("500", "代理分成：单用户每天最多记录多少次广告展示收益"),
     "app_download_url": ("https://fir.xcxwo.com/sd9efqvp", "邀请落地页“立即下载”的地址(fir.im分发)"),
     "site_enabled": ("true", "网站总开关，true=用户可访问，false=只显示关闭提示"),
     "site_closed_msg": ("网站已关闭，请联系管理员", "网站关闭时给用户看的提示"),
@@ -397,6 +409,9 @@ def delete_admin_user(db: Session, uid: int):
     user = get_admin_user_by_id(db, uid)
     if user is None or user.is_super:
         return False   # 超管不允许删
+    from app.agent_models import Agent  # 局部导入，避免循环依赖
+    if db.query(Agent.id).filter(Agent.admin_user_id == uid).first():
+        return False   # 代理商的登录账号不能在这里删(有账单关联)，到“代理商管理”里停用
     db.delete(user)
     db.commit()
     return True

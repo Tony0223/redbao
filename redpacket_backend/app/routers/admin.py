@@ -54,6 +54,7 @@ MENU_ITEMS = [
     ("content", "公告/协议"),
     ("feedback", "意见反馈"),
     ("settings", "App/客服设置"),
+    ("agents", "代理商管理"),
 ]
 ALL_MENU_KEYS = [k for k, _ in MENU_ITEMS]
 # 仅超管可见的“后台账号管理”菜单
@@ -63,6 +64,12 @@ SUPER_MENUS = [
     ("site-control", "网站开关"),
 ]
 SUPER_MENU_KEYS = [k for k, _ in SUPER_MENUS]
+# 代理商账号专属菜单(只看自己名下的数据)
+AGENT_MENUS = [
+    ("agent-users", "我的用户"),
+    ("agent-bills", "我的账单"),
+]
+AGENT_MENU_KEYS = [k for k, _ in AGENT_MENUS]
 # 兼容旧引用
 SUPER_MENU_KEY = "admin-users"
 
@@ -131,8 +138,17 @@ def verify_admin(request: Request, db: Session = Depends(get_db)):
             detail="未登录",
             headers={"Location": "/admin/login"},
         )
+    # 代理商账号：挂上对应的代理，供代理专属页面和菜单使用
+    from app import agent_service  # 局部导入，避免循环依赖
+    user.agent = agent_service.get_agent_by_admin_user(db, user.id)
+
     key = _menu_key_for_path(request.url.path)
-    if key in SUPER_MENU_KEYS:
+    if key in AGENT_MENU_KEYS:
+        if user.agent is None:
+            raise HTTPException(status_code=403, detail="仅代理商账号可访问")
+        if not user.agent.enabled:
+            raise HTTPException(status_code=403, detail="代理账号已停用，请联系管理员")
+    elif key in SUPER_MENU_KEYS:
         if not user.is_super:
             raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     elif key in ALL_MENU_KEYS and not user.is_super:
@@ -177,8 +193,24 @@ def render_page(active: str, body: str, user=None) -> str:
                 f'">{slabel}</a>'
             )
 
+    # 代理商账号显示代理专属菜单
+    if user is not None and getattr(user, "agent", None) is not None:
+        for akey, alabel in AGENT_MENUS:
+            selected = active == akey
+            nav_html += (
+                f'<a href="/admin/{akey}" style="display:block;padding:10px 16px;margin-bottom:2px;'
+                f'text-decoration:none;font-size:14px;border-radius:8px;'
+                f'{"background:#2563eb;color:#fff;font-weight:600;" if selected else "color:#374151;"}'
+                f'">{alabel}</a>'
+            )
+
     uname = html.escape(getattr(user, "username", "") or "")
-    role = "超级管理员" if getattr(user, "is_super", False) else "管理员"
+    if getattr(user, "is_super", False):
+        role = "超级管理员"
+    elif getattr(user, "agent", None) is not None:
+        role = "代理商"
+    else:
+        role = "管理员"
     return f"""
     <!DOCTYPE html>
     <html lang="zh-CN">
@@ -816,7 +848,9 @@ def logout():
 @router.get("")
 def admin_index(user=Depends(verify_admin)):
     menus = _visible_menus(user)
-    if menus:
+    if getattr(user, "agent", None) is not None and not user.is_super:
+        target = AGENT_MENUS[0][0]
+    elif menus:
         target = menus[0][0]
     elif user.is_super:
         target = SUPER_MENU_KEY

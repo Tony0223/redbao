@@ -19,6 +19,13 @@ class AdRewardRequest(BaseModel):
     is_game_ad: bool = False
 
 
+class AdRevenueReport(BaseModel):
+    """App 每次广告展示时上报穿山甲给的真实 eCPM，用于代理分成。"""
+    ad_type: str                    # reward_video / fullscreen / feed / banner / splash
+    ecpm: str                       # SDK 原样返回的 eCPM，单位分/千次展示
+    sdk_name: Optional[str] = None  # 实际出广告的ADN，可空
+
+
 class AdRewardResponse(BaseModel):
     """服务器算好金币后返回给App。"""
     reward_amount: int       # 这次基础奖励拿到多少金币
