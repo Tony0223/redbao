@@ -19,7 +19,9 @@ from app import coin_models                       # noqa: F401  让 create_all �
 from app.routers import admin_content, mine
 
 from app import feedback_models                      # noqa: F401
+from app import agent_models                         # noqa: F401  代理商分成相关表
 from app.routers import admin_feedback, feedback
+from app.routers import admin_agent
 
 from app.routers import download
 
@@ -69,6 +71,7 @@ app.include_router(admin_content.router)
 app.include_router(feedback.router)
 app.include_router(admin_feedback.router)
 app.include_router(download.router)
+app.include_router(admin_agent.router)
 
 
 @app.get("/api/health")
