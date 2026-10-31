@@ -9,6 +9,7 @@ import com.bytedance.sdk.openadsdk.TTAdNative;
 import com.bytedance.sdk.openadsdk.TTAdSdk;
 import com.bytedance.sdk.openadsdk.TTNativeExpressAd;
 import com.bytedance.sdk.openadsdk.mediation.ad.MediationAdSlot;
+import com.tonyfeng.jinshisuda.api.AdRevenueReporter;
 
 import java.util.List;
 
@@ -69,6 +70,7 @@ public class BannerAdHelper {
 
                     @Override
                     public void onAdShow(View view, int type) {
+                        AdRevenueReporter.reportBanner(activity, ad);   // 代理分成：上报真实eCPM
                     }
 
                     @Override

@@ -7,6 +7,7 @@ import com.bytedance.sdk.openadsdk.AdSlot;
 import com.bytedance.sdk.openadsdk.TTAdNative;
 import com.bytedance.sdk.openadsdk.TTAdSdk;
 import com.bytedance.sdk.openadsdk.TTFullScreenVideoAd;
+import com.tonyfeng.jinshisuda.api.AdRevenueReporter;
 
 /**
  * 新插屏广告。用在"签到成功、结果弹窗关掉之后"这种时机，
@@ -54,6 +55,7 @@ public class InterstitialAdHelper {
                         new TTFullScreenVideoAd.FullScreenVideoAdInteractionListener() {
                             @Override
                             public void onAdShow() {
+                                AdRevenueReporter.reportFullScreen(activity, ad);   // 代理分成：上报真实eCPM
                             }
 
                             @Override

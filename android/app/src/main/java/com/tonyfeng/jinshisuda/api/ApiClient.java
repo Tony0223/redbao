@@ -63,6 +63,23 @@ public class ApiClient {
     /**
      * 查自己的金币余额。身份由token决定，不用再传user_id。
      */
+    /**
+     * 上报一次广告展示的真实 eCPM(单位分/千次)，后端用来给代理按收益分成。
+     * adType：reward_video / fullscreen / feed / banner / splash
+     */
+    public static void reportAdRevenue(String token, String adType, String ecpm, String sdkName,
+                                       ApiCallback callback) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("ad_type", adType);
+            body.put("ecpm", ecpm);
+            if (sdkName != null) body.put("sdk_name", sdkName);
+            postJson("/api/ad/revenue", body, token, callback);
+        } catch (JSONException e) {
+            callback.onError("构造请求失败: " + e.getMessage());
+        }
+    }
+
     public static void getUserBalance(String token, ApiCallback callback) {
         get("/api/user/me/balance", token, callback);
     }
