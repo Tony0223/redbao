@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
-from app import crud, models
+from app import agent_service, crud, models
 from app.database import get_db
 
 router = APIRouter(tags=["landing"])
@@ -142,6 +142,10 @@ function startDownload() {{
 def invite_landing(invite_code: str, db: Session = Depends(get_db)):
     invite_code = (invite_code or "").strip()[:16]
     inviter = crud.get_user_by_invite_code(db, invite_code) if invite_code else None
+    if inviter is None and invite_code:
+        # 代理专属邀请码也算有效
+        agent = agent_service.get_agent_by_code(db, invite_code)
+        inviter = agent if (agent is not None and agent.enabled) else None
     # 下载地址：邀请落地页专用，后台“App/客服设置 → App下载地址”可配，默认 fir.im 分发
     download_url = crud.get_setting(db, "app_download_url", "https://fir.xcxwo.com/sd9efqvp").strip()
     return HTMLResponse(content=_page(invite_code, download_url, inviter is not None))
