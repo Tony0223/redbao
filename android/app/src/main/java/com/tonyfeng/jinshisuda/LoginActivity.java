@@ -3,16 +3,22 @@ package com.tonyfeng.jinshisuda;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.tonyfeng.jinshisuda.api.ApiClient;
+import com.tonyfeng.jinshisuda.api.InviteCodeStore;
 import com.tonyfeng.jinshisuda.api.UserManager;
 import com.tonyfeng.jinshisuda.api.WeChatLoginManager;
 
 import org.json.JSONObject;
+
+import java.util.Locale;
 
 /**
  * 登录页 = APP 启动入口。
@@ -22,6 +28,10 @@ import org.json.JSONObject;
  * 2. 网站开启时——已登录直接走开屏进首页；未登录展示“微信登录”按钮。
  *
  * 产品决策：必须登录才能进（无跳过入口）。拉不到配置(离线等)时按开启处理，不误伤。
+ *
+ * 邀请码：新用户是在本页完成注册的，所以剪贴板里的邀请码必须在本页读取
+ * (之前放在首页读，注册时还没读到，导致邀请/代理关系绑不上)。
+ * 读到的码自动填进“邀请码(选填)”输入框，用户也可手动输入代理/好友给的码。
  */
 public class LoginActivity extends AppCompatActivity {
 
@@ -29,13 +39,71 @@ public class LoginActivity extends AppCompatActivity {
     private boolean siteClosed = false;  // 网站被关闭
     private boolean siteChecked = false; // 配置已拉到(拿到网站开关结果)
 
+    private EditText etInviteCode;
+    private View btnLogin;
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus || siteClosed || etInviteCode == null) return;
+        // Android 10+ 只有前台有焦点时才能读剪贴板，所以放在这里
+        InviteCodeStore.tryReadFromClipboard(this);
+        String pending = InviteCodeStore.peek(this);
+        if (pending != null && etInviteCode.getText().toString().trim().isEmpty()) {
+            etInviteCode.setText(pending);
+        }
+    }
+
+    /** 点微信登录：有邀请码先校验存在再登录；没填就直接登录 */
+    private void onLoginClick() {
+        String code = etInviteCode.getText().toString().trim().toUpperCase(Locale.ROOT);
+        if (code.isEmpty()) {
+            InviteCodeStore.consume(this);   // 用户清空了输入框，就不绑定
+            WeChatLoginManager.login(this);
+            return;
+        }
+        if (!code.matches("[A-Z0-9]{4,16}")) {
+            Toast.makeText(this, "邀请码格式不对，请核对", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        btnLogin.setEnabled(false);
+        ApiClient.checkInviteCode(code, new ApiClient.ApiCallback() {
+            @Override
+            public void onSuccess(JSONObject d) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    btnLogin.setEnabled(true);
+                    if (!d.optBoolean("valid", false)) {
+                        Toast.makeText(LoginActivity.this,
+                                "邀请码不存在，请核对；没有邀请码可清空后直接登录", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    InviteCodeStore.save(LoginActivity.this, code);
+                    WeChatLoginManager.login(LoginActivity.this);
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    btnLogin.setEnabled(true);
+                    // 校验接口不通时不拦用户，照常带上邀请码登录，由服务端判断
+                    InviteCodeStore.save(LoginActivity.this, code);
+                    WeChatLoginManager.login(LoginActivity.this);
+                });
+            }
+        });
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_login);
-        findViewById(R.id.btn_wechat_login).setOnClickListener(v ->
-                WeChatLoginManager.login(LoginActivity.this));
+        etInviteCode = findViewById(R.id.et_invite_code);
+        btnLogin = findViewById(R.id.btn_wechat_login);
+        btnLogin.setOnClickListener(v -> onLoginClick());
 
         checkSite();
     }

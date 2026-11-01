@@ -55,6 +55,11 @@ public class InviteCodeStore {
         }
     }
 
+    /** 用户在登录页手动填写/确认的邀请码，注册时带给服务端 */
+    public static void save(Context context, String code) {
+        prefs(context).edit().putString(KEY_PENDING, code).apply();
+    }
+
     /** 取出待绑定的邀请码，没有就返回 null */
     public static String peek(Context context) {
         return prefs(context).getString(KEY_PENDING, null);

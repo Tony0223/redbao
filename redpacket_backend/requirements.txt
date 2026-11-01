@@ -7,4 +7,5 @@ cryptography==43.0.1
 python-multipart==0.0.12
 httpx==0.27.2
 requests==2.32.3
-apscheduler=3.11.3
+apscheduler==3.11.3
+segno==1.6.6

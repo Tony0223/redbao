@@ -162,14 +162,27 @@ function startDownload() {{
 </html>"""
 
 
+def _invite_code_valid(db: Session, code: str) -> bool:
+    """用户邀请码，或启用中的代理专属邀请码，都算有效。"""
+    if not code:
+        return False
+    if crud.get_user_by_invite_code(db, code) is not None:
+        return True
+    agent = agent_service.get_agent_by_code(db, code)
+    return agent is not None and agent.enabled
+
+
 @router.get("/i/{invite_code}", response_class=HTMLResponse)
 def invite_landing(invite_code: str, db: Session = Depends(get_db)):
     invite_code = (invite_code or "").strip()[:16]
-    inviter = crud.get_user_by_invite_code(db, invite_code) if invite_code else None
-    if inviter is None and invite_code:
-        # 代理专属邀请码也算有效
-        agent = agent_service.get_agent_by_code(db, invite_code)
-        inviter = agent if (agent is not None and agent.enabled) else None
+    valid = _invite_code_valid(db, invite_code)
     # 下载地址：后台"App/客服设置 → App下载地址"可配，默认走自己服务器托管的 apk
     download_url = crud.get_setting(db, "app_download_url", DEFAULT_DOWNLOAD_URL).strip()
-    return HTMLResponse(content=_page(invite_code, download_url, inviter is not None))
+    return HTMLResponse(content=_page(invite_code, download_url, valid))
+
+
+@router.get("/api/invite/check/{code}")
+def check_invite_code(code: str, db: Session = Depends(get_db)):
+    """App 登录页手动填邀请码时先校验，免得填错了静默绑不上。不需要登录。"""
+    code = (code or "").strip().upper()[:16]
+    return {"valid": _invite_code_valid(db, code)}
