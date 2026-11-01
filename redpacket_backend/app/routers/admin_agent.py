@@ -13,7 +13,7 @@
 收益口径：App 每次广告展示上报的真实 eCPM，单次收益 = eCPM / 1000 (分)。
 """
 import html
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -88,6 +88,7 @@ def agents_page(
     admin=Depends(verify_admin),
 ):
     month_start, month_end = svc.month_range(date.today())
+    last_start, last_end = svc.prev_month_range(date.today())
     rows = []
     for a in svc.list_agents(db):
         login = "—"
@@ -96,6 +97,7 @@ def agents_page(
             au = crud.get_admin_user_by_id(db, a.admin_user_id)
             login = html.escape(au.username) if au else "—"
         month_rev = svc.revenue_fen(db, a.id, month_start, month_end)
+        last_rev = svc.revenue_fen(db, a.id, last_start, last_end)
         link = _invite_link(request, a.invite_code)
         status = ('<span style="color:#16a34a;">启用</span>' if a.enabled
                   else '<span style="color:#dc2626;">停用</span>')
@@ -120,13 +122,14 @@ def agents_page(
             svc.count_agent_users(db, a.id),
             f"¥{svc.fen_to_yuan(month_rev)}",
             f"¥{svc.fen_to_yuan(svc.share_of(a, month_rev))}",
+            f"¥{svc.fen_to_yuan(svc.share_of(a, last_rev))}",
             f"¥{svc.fen_to_yuan(svc.pending_share_fen(db, a.id))}",
             login,
             status,
             edit_html,
         ])
     table = render_table(
-        ["ID", "名称", "专属邀请码/链接", "比例", "名下用户", "本月收益", "本月应分", "待结算",
+        ["ID", "名称", "专属邀请码/链接", "比例", "名下用户", "本月收益", "本月应分", "上月应分", "待打款",
          "登录账号", "状态", "操作"],
         rows,
     )
@@ -235,7 +238,11 @@ def settlements_page(
             action = (f'<form method="post" action="/admin/agents/settlements/{s.id}/settle" '
                       f'onsubmit="return confirm(\'确认已线下打款给代理？\')" style="margin:0;">'
                       f'<button type="submit" style="{BTN_STYLE}background:#16a34a;padding:5px 12px;">'
-                      f'标记已结算</button></form>')
+                      f'标记已结算</button></form>'
+                      f'<form method="post" action="/admin/agents/settlements/{s.id}/delete" '
+                      f'onsubmit="return confirm(\'确定删除这张待结算单？删除后可重新生成\')" style="margin:6px 0 0;">'
+                      f'<button type="submit" style="{BTN_STYLE}background:#dc2626;padding:5px 12px;">'
+                      f'删除</button></form>')
         else:
             action = s.settled_at.strftime("%Y-%m-%d %H:%M") if s.settled_at else "—"
         rows.append([
@@ -262,14 +269,18 @@ def settlements_page(
       筛选代理 <select name="agent_id" style="{INPUT_STYLE}"><option value="0">全部</option>{options}</select>
       <button type="submit" style="{BTN_STYLE}background:#6b7280;">筛选</button>
     </form>"""
+    # 默认填上个月(每月结一次直接点生成)
+    last_start, last_end = svc.prev_month_range(date.today())
+    default_start = last_start.date().isoformat()
+    default_end = (last_end.date() - timedelta(days=1)).isoformat()
     gen_options = "".join(f'<option value="{a.id}">{html.escape(a.name)}</option>' for a in agents)
     create_form = f"""
     <div style="border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-top:24px;background:#fff;">
       <h2 style="margin-top:0;color:#111827;font-size:16px;">生成结算单</h2>
       <form method="post" action="/admin/agents/settlements/create" style="line-height:2.6;">
         代理 <select name="agent_id" required style="{INPUT_STYLE}">{gen_options}</select>
-        开始 <input type="date" name="start" required style="{INPUT_STYLE}" />
-        结束 <input type="date" name="end" required style="{INPUT_STYLE}" />
+        开始 <input type="date" name="start" value="{default_start}" required style="{INPUT_STYLE}" />
+        结束 <input type="date" name="end" value="{default_end}" required style="{INPUT_STYLE}" />
         <input name="remark" placeholder="备注(选填)" style="{INPUT_STYLE}" />
         <button type="submit" style="{BTN_STYLE}background:#2563eb;">生成</button>
         <div style="font-size:12px;color:#6b7280;">
@@ -306,6 +317,19 @@ async def settlements_create(
                      f"已生成：{agent.name} {s.period_start}~{s.period_end} 应付 ¥{svc.fen_to_yuan(s.share_fen)}")
 
 
+@router.post("/agents/settlements/{settlement_id}/delete")
+def settlements_delete(
+    settlement_id: int,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    try:
+        svc.delete_settlement(db, settlement_id)
+    except svc.AgentError as e:
+        return _redirect("/admin/agents/settlements", str(e), ok=False)
+    return _redirect("/admin/agents/settlements", "已删除，可重新生成")
+
+
 @router.post("/agents/settlements/{settlement_id}/settle")
 def settlements_settle(
     settlement_id: int,
@@ -321,22 +345,39 @@ def settlements_settle(
 
 # ==================== 代理端：我的用户 ====================
 
+def _ov_card(label: str, value: str, hint: str = "") -> str:
+    hint_html = f'<div style="color:#9ca3af;font-size:12px;margin-top:4px;">{hint}</div>' if hint else ""
+    return (f'<div style="flex:1 1 200px;min-width:200px;background:#fff;border:1px solid #e5e7eb;'
+            f'border-radius:12px;padding:16px 18px;">'
+            f'<div style="color:#6b7280;font-size:13px;margin-bottom:6px;">{label}</div>'
+            f'<div style="color:#111827;font-size:20px;font-weight:700;">{value}</div>{hint_html}</div>')
+
+
 def _agent_overview(db: Session, agent) -> str:
+    """收益概览。每格显示：收益 / 按当前比例算的预计分成。"""
     today = date.today()
     d_start, d_end = svc.day_range(today)
+    y_start, y_end = svc.day_range(today - timedelta(days=1))
     m_start, m_end = svc.month_range(today)
-    today_rev = svc.revenue_fen(db, agent.id, d_start, d_end)
-    month_rev = svc.revenue_fen(db, agent.id, m_start, m_end)
+    lm_start, lm_end = svc.prev_month_range(today)
+
+    def pair(rev):
+        return f"¥{svc.fen_to_yuan(rev)} / ¥{svc.fen_to_yuan(svc.share_of(agent, rev))}"
+
     cards = "".join([
-        stat_card("名下用户", str(svc.count_agent_users(db, agent.id))),
-        stat_card("今日新增", str(svc.count_agent_users(db, agent.id, d_start, d_end))),
-        stat_card("今日收益 / 预计分成",
-                  f"¥{svc.fen_to_yuan(today_rev)} / ¥{svc.fen_to_yuan(svc.share_of(agent, today_rev))}"),
-        stat_card("本月收益 / 预计分成",
-                  f"¥{svc.fen_to_yuan(month_rev)} / ¥{svc.fen_to_yuan(svc.share_of(agent, month_rev))}"),
-        stat_card("待结算", f"¥{svc.fen_to_yuan(svc.pending_share_fen(db, agent.id))}"),
+        _ov_card("名下用户", str(svc.count_agent_users(db, agent.id)),
+                 f"今日新增 {svc.count_agent_users(db, agent.id, d_start, d_end)}"),
+        _ov_card("今日收益 / 预计分成", pair(svc.revenue_fen(db, agent.id, d_start, d_end))),
+        _ov_card("昨日收益 / 预计分成", pair(svc.revenue_fen(db, agent.id, y_start, y_end))),
+        _ov_card("本月收益 / 预计分成", pair(svc.revenue_fen(db, agent.id, m_start, m_end))),
+        _ov_card("上月收益 / 预计分成", pair(svc.revenue_fen(db, agent.id, lm_start, lm_end))),
+        _ov_card("累计收益 / 预计分成", pair(svc.total_revenue_fen(db, agent.id))),
+        _ov_card("待打款", f"¥{svc.fen_to_yuan(svc.pending_share_fen(db, agent.id))}",
+                 "已出结算单、还没打款的金额"),
     ])
-    return f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">{cards}</div>'
+    return (f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">{cards}</div>'
+            f'<div style="font-size:12px;color:#9ca3af;margin-bottom:20px;">'
+            f'“预计分成”按当前比例估算，实际以管理员生成的结算单金额为准。</div>')
 
 
 @router.get("/agent-users", response_class=HTMLResponse)

@@ -45,6 +45,13 @@ def month_range(d: date):
     return start, nxt
 
 
+def prev_month_range(d: date):
+    """上个月 [1号00:00, 本月1号00:00)"""
+    this_start = datetime(d.year, d.month, 1)
+    last_day = this_start - timedelta(days=1)
+    return datetime(last_day.year, last_day.month, 1), this_start
+
+
 # ==================== 代理 ====================
 
 def generate_agent_code(db: Session) -> str:
@@ -225,6 +232,16 @@ def revenue_fen(db: Session, agent_id: int, start: datetime, end: datetime) -> D
     return Decimal(total or 0) / 1000
 
 
+def total_revenue_fen(db: Session, agent_id: int) -> Decimal:
+    """某代理名下用户累计产生的广告收益(分)。"""
+    total = (
+        db.query(func.sum(AdRevenueLog.ecpm_fen))
+        .filter(AdRevenueLog.agent_id == agent_id)
+        .scalar()
+    )
+    return Decimal(total or 0) / 1000
+
+
 def daily_revenue(db: Session, agent_id: int, days: int = 30):
     """最近 N 天每日 (日期, 展示次数, 收益分)，最新在前。"""
     since = datetime.combine(date.today() - timedelta(days=days - 1), datetime.min.time())
@@ -303,4 +320,15 @@ def mark_settled(db: Session, settlement_id: int) -> None:
         return
     s.status = SettlementStatus.SETTLED
     s.settled_at = datetime.now()
+    db.commit()
+
+
+def delete_settlement(db: Session, settlement_id: int) -> None:
+    """删除结算单：只允许删“待结算”的(生成错了可以重来)，已结算的不能删。"""
+    s = db.query(AgentSettlement).filter(AgentSettlement.id == settlement_id).first()
+    if s is None:
+        raise AgentError("结算单不存在")
+    if s.status == SettlementStatus.SETTLED:
+        raise AgentError("已结算的结算单不能删除")
+    db.delete(s)
     db.commit()
