@@ -13,6 +13,7 @@
 收益口径：App 每次广告展示上报的真实 eCPM，单次收益 = eCPM / 1000 (分)。
 """
 import html
+import json
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -90,6 +91,7 @@ def agents_page(
     month_start, month_end = svc.month_range(date.today())
     last_start, last_end = svc.prev_month_range(date.today())
     rows = []
+    dialogs = []
     for a in svc.list_agents(db):
         login = "—"
         if a.admin_user_id:
@@ -99,25 +101,49 @@ def agents_page(
         month_rev = svc.revenue_fen(db, a.id, month_start, month_end)
         last_rev = svc.revenue_fen(db, a.id, last_start, last_end)
         link = _invite_link(request, a.invite_code)
-        status = ('<span style="color:#16a34a;">启用</span>' if a.enabled
-                  else '<span style="color:#dc2626;">停用</span>')
-        edit_html = f"""
-        <details><summary style="cursor:pointer;color:#2563eb;font-size:13px;">编辑</summary>
-          <form method="post" action="/admin/agents/{a.id}/update" style="margin-top:8px;line-height:2.4;">
-            名称 <input name="name" value="{html.escape(a.name)}" required style="{INPUT_STYLE}width:120px;" /><br>
-            分成比例 <input name="share_ratio" value="{a.share_ratio}" required style="{INPUT_STYLE}width:70px;" /> %<br>
-            联系方式 <input name="contact" value="{html.escape(a.contact or '')}" style="{INPUT_STYLE}width:140px;" /><br>
-            备注 <input name="remark" value="{html.escape(a.remark or '')}" style="{INPUT_STYLE}width:160px;" /><br>
-            <label><input type="checkbox" name="enabled" {"checked" if a.enabled else ""}/> 启用</label><br>
-            重置密码 <input name="password" placeholder="留空不改" style="{INPUT_STYLE}width:120px;" /><br>
-            <button type="submit" style="{BTN_STYLE}background:#2563eb;">保存</button>
+        link_js = html.escape(json.dumps(link), quote=True)
+        status = ('<span class="ag-tag ag-on">启用</span>' if a.enabled
+                  else '<span class="ag-tag ag-off">停用</span>')
+        invite_cell = (
+            f'<b style="letter-spacing:1px;">{a.invite_code}</b>'
+            f'<div style="margin-top:4px;">'
+            f'<button type="button" class="ag-link" onclick="agCopy({link_js})">复制链接</button>'
+            f'<span style="color:#d1d5db;margin:0 6px;">|</span>'
+            f'<a class="ag-link" href="/admin/agents/{a.id}/qrcode.png?download=1">下载二维码</a></div>'
+        )
+        edit_btn = (f'<button type="button" class="ag-btn ag-btn-o" '
+                    f'onclick="document.getElementById(\'dlg-{a.id}\').showModal()">编辑</button>')
+        dialogs.append(f"""
+        <dialog class="ag-dlg" id="dlg-{a.id}">
+          <form method="post" action="/admin/agents/{a.id}/update">
+            <div class="hd">编辑代理 · {html.escape(a.name)}</div>
+            <div class="bd">
+              <label class="k">代理名称</label>
+              <input class="ag-in" name="name" value="{html.escape(a.name)}" required />
+              <label class="k">分成比例</label>
+              <div class="ag-suffix"><input class="ag-in" name="share_ratio" value="{a.share_ratio}" required /><span>%</span></div>
+              <label class="k">联系方式</label>
+              <input class="ag-in" name="contact" value="{html.escape(a.contact or '')}" placeholder="选填" />
+              <label class="k">备注</label>
+              <input class="ag-in" name="remark" value="{html.escape(a.remark or '')}" placeholder="选填" />
+              <label class="k">状态</label>
+              <label class="ag-check"><input type="checkbox" name="enabled" {"checked" if a.enabled else ""}/>
+                启用<span class="ag-hint">停用后代理无法登录，新用户不再归属</span></label>
+              <label class="k">登录账号</label>
+              <div style="font-size:14px;color:#111827;">{login}</div>
+              <label class="k">重置密码</label>
+              <input class="ag-in" name="password" placeholder="留空则不修改" autocomplete="new-password" />
+            </div>
+            <div class="ft">
+              <button type="button" class="ag-btn ag-btn-g" onclick="this.closest('dialog').close()">取消</button>
+              <button type="submit" class="ag-btn ag-btn-p">保存</button>
+            </div>
           </form>
-        </details>"""
+        </dialog>""")
         rows.append([
             a.id,
-            html.escape(a.name),
-            f'<b>{a.invite_code}</b><br><span style="font-size:12px;color:#6b7280;">{html.escape(link)}</span>'
-            f'<br><a href="/admin/agents/{a.id}/qrcode.png?download=1" style="font-size:12px;color:#2563eb;">下载推广二维码</a>',
+            f'<span style="font-weight:600;">{html.escape(a.name)}</span>',
+            invite_cell,
             f"{a.share_ratio}%",
             svc.count_agent_users(db, a.id),
             f"¥{svc.fen_to_yuan(month_rev)}",
@@ -126,35 +152,89 @@ def agents_page(
             f"¥{svc.fen_to_yuan(svc.pending_share_fen(db, a.id))}",
             login,
             status,
-            edit_html,
+            edit_btn,
         ])
     table = render_table(
-        ["ID", "名称", "专属邀请码/链接", "比例", "名下用户", "本月收益", "本月应分", "上月应分", "待打款",
+        ["ID", "名称", "专属邀请码", "比例", "名下用户", "本月收益", "本月应分", "上月应分", "待打款",
          "登录账号", "状态", "操作"],
         rows,
     )
-    create_form = f"""
-    <div style="border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-top:24px;background:#fff;">
-      <h2 style="margin-top:0;color:#111827;font-size:16px;">新建代理商</h2>
-      <form method="post" action="/admin/agents/create" style="line-height:2.6;">
-        <input name="name" placeholder="代理名称" required style="{INPUT_STYLE}" />
-        <input name="share_ratio" placeholder="分成比例%，如30" required style="{INPUT_STYLE}width:150px;" />
-        <input name="contact" placeholder="联系方式(选填)" style="{INPUT_STYLE}" /><br>
-        <input name="username" placeholder="代理登录账号" required style="{INPUT_STYLE}" />
-        <input name="password" placeholder="登录密码" required style="{INPUT_STYLE}" />
-        <input name="remark" placeholder="备注(选填)" style="{INPUT_STYLE}" /><br>
-        <button type="submit" style="{BTN_STYLE}background:#16a34a;">创建代理</button>
-        <span style="font-size:12px;color:#6b7280;margin-left:8px;">
-          创建后自动生成专属邀请码；用户通过该邀请链接注册即归属此代理。</span>
+    create_form = """
+    <div class="ag-card">
+      <h2 style="margin:0 0 16px;color:#111827;font-size:16px;">新建代理商</h2>
+      <form method="post" action="/admin/agents/create">
+        <div class="ag-grid">
+          <div><label class="t">代理名称 *</label><input class="ag-in" name="name" required /></div>
+          <div><label class="t">分成比例 *</label>
+            <div class="ag-suffix"><input class="ag-in" name="share_ratio" placeholder="如 30" required /><span>%</span></div></div>
+          <div><label class="t">联系方式</label><input class="ag-in" name="contact" placeholder="选填" /></div>
+          <div><label class="t">登录账号 *</label><input class="ag-in" name="username" autocomplete="off" required /></div>
+          <div><label class="t">登录密码 *</label><input class="ag-in" name="password" autocomplete="new-password" required /></div>
+          <div><label class="t">备注</label><input class="ag-in" name="remark" placeholder="选填" /></div>
+        </div>
+        <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <button type="submit" class="ag-btn ag-btn-s">创建代理</button>
+          <span class="ag-hint">创建后自动生成专属邀请码；用户通过该邀请链接注册即归属此代理。</span>
+        </div>
       </form>
     </div>
     """
     nav = ('<div style="margin-bottom:16px;"><a href="/admin/agents/settlements" '
            'style="color:#2563eb;">→ 代理结算单</a></div>')
-    body = (f'<h1 style="color:#111827;">代理商管理</h1>{_tip(msg, bool(ok))}{nav}'
+    body = (f'{_AGENT_PAGE_ASSETS}<h1 style="color:#111827;">代理商管理</h1>{_tip(msg, bool(ok))}{nav}'
             f'<div style="font-size:13px;color:#6b7280;margin-bottom:12px;">'
-            f'收益=名下用户广告展示的真实eCPM累计；应分=收益×比例。</div>{table}{create_form}')
+            f'收益=名下用户广告展示的真实eCPM累计；应分=收益×比例。</div>'
+            f'<div class="ag-tbl">{table}</div>{create_form}{"".join(dialogs)}')
     return HTMLResponse(content=render_page("agents", body, admin))
+
+
+# 代理商管理页的样式和脚本：表格不换行(放不下横向滚动)、编辑弹窗、复制链接
+_AGENT_PAGE_ASSETS = """
+<style>
+  .ag-tbl { overflow-x:auto; border-radius:12px; }
+  .ag-tbl th, .ag-tbl td { white-space:nowrap; }
+  .ag-in { width:100%; box-sizing:border-box; padding:9px 11px; border:1px solid #d1d5db;
+           border-radius:8px; font-size:14px; color:#111827; background:#fff; }
+  .ag-in:focus { outline:none; border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,.15); }
+  .ag-suffix { display:flex; align-items:center; gap:8px; }
+  .ag-suffix span { color:#6b7280; font-size:14px; }
+  .ag-btn { border:none; border-radius:8px; padding:8px 18px; font-size:14px; cursor:pointer; }
+  .ag-btn-p { background:#2563eb; color:#fff; }
+  .ag-btn-s { background:#16a34a; color:#fff; padding:9px 22px; }
+  .ag-btn-g { background:#f3f4f6; color:#374151; }
+  .ag-btn-o { background:#fff; color:#2563eb; border:1px solid #bfdbfe; padding:5px 14px; font-size:13px; }
+  .ag-btn-o:hover { background:#eff6ff; }
+  .ag-link { color:#2563eb; font-size:12px; background:none; border:none; padding:0; cursor:pointer;
+             text-decoration:none; }
+  .ag-link:hover { text-decoration:underline; }
+  .ag-tag { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; }
+  .ag-on { background:#dcfce7; color:#166534; }
+  .ag-off { background:#fee2e2; color:#991b1b; }
+  .ag-hint { color:#9ca3af; font-size:12px; margin-left:6px; }
+  .ag-card { border:1px solid #e5e7eb; border-radius:12px; padding:22px 24px; margin-top:24px; background:#fff; }
+  .ag-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:14px 16px; }
+  .ag-grid label.t { display:block; font-size:13px; color:#374151; margin-bottom:6px; }
+  .ag-dlg { border:none; border-radius:14px; padding:0; width:460px; max-width:92vw;
+            box-shadow:0 24px 60px rgba(0,0,0,.25); }
+  .ag-dlg::backdrop { background:rgba(17,24,39,.45); }
+  .ag-dlg .hd { padding:18px 24px; border-bottom:1px solid #f3f4f6; font-size:16px; font-weight:600; color:#111827; }
+  .ag-dlg .bd { padding:20px 24px; display:grid; grid-template-columns:80px 1fr; gap:14px 14px; align-items:center; }
+  .ag-dlg label.k { color:#6b7280; font-size:13px; text-align:right; }
+  .ag-dlg .ag-check { font-size:14px; color:#111827; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .ag-dlg .ag-check .ag-hint { margin-left:0; width:100%; }
+  .ag-dlg .ft { padding:14px 24px; border-top:1px solid #f3f4f6; display:flex; justify-content:flex-end; gap:10px; }
+</style>
+<script>
+  function agCopy(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () { alert('邀请链接已复制'); },
+                                               function () { prompt('请复制下面的邀请链接', text); });
+    } else {
+      prompt('请复制下面的邀请链接', text);
+    }
+  }
+</script>
+"""
 
 
 @router.get("/agents/{agent_id}/qrcode.png")
