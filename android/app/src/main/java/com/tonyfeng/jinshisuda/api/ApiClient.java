@@ -80,6 +80,11 @@ public class ApiClient {
         }
     }
 
+    /** 校验邀请码是否存在(用户邀请码或代理专属邀请码都算)，不需要登录。返回 {"valid": true/false} */
+    public static void checkInviteCode(String code, ApiCallback callback) {
+        get("/api/invite/check/" + code, null, callback);
+    }
+
     public static void getUserBalance(String token, ApiCallback callback) {
         get("/api/user/me/balance", token, callback);
     }

@@ -16,7 +16,7 @@ import html
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 from urllib.parse import quote
 
@@ -47,6 +47,24 @@ def _tip(msg: str, ok: bool = True) -> str:
 def _invite_link(request: Request, code: str) -> str:
     host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
     return f"https://{host}/i/{code}"
+
+
+def _qrcode_response(text: str, filename: str, download: bool) -> Response:
+    """把邀请链接生成二维码 PNG。segno 是纯 Python 零依赖库，服务器端生成，不依赖外部 CDN。"""
+    try:
+        import segno  # 局部导入：服务器没装时只影响二维码，不影响后台其他功能
+    except ImportError:
+        return Response("服务器未安装 segno，请在后端目录执行 pip install -r requirements.txt",
+                        status_code=500, media_type="text/plain; charset=utf-8")
+    import io
+    buf = io.BytesIO()
+    segno.make(text, error="m").save(buf, kind="png", scale=12, border=3)
+    disposition = "attachment" if download else "inline"
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+    )
 
 
 def _status_badge(status: str) -> str:
@@ -96,7 +114,8 @@ def agents_page(
         rows.append([
             a.id,
             html.escape(a.name),
-            f'<b>{a.invite_code}</b><br><span style="font-size:12px;color:#6b7280;">{html.escape(link)}</span>',
+            f'<b>{a.invite_code}</b><br><span style="font-size:12px;color:#6b7280;">{html.escape(link)}</span>'
+            f'<br><a href="/admin/agents/{a.id}/qrcode.png?download=1" style="font-size:12px;color:#2563eb;">下载推广二维码</a>',
             f"{a.share_ratio}%",
             svc.count_agent_users(db, a.id),
             f"¥{svc.fen_to_yuan(month_rev)}",
@@ -133,6 +152,21 @@ def agents_page(
             f'<div style="font-size:13px;color:#6b7280;margin-bottom:12px;">'
             f'收益=名下用户广告展示的真实eCPM累计；应分=收益×比例。</div>{table}{create_form}')
     return HTMLResponse(content=render_page("agents", body, admin))
+
+
+@router.get("/agents/{agent_id}/qrcode.png")
+def agent_qrcode_admin(
+    agent_id: int,
+    request: Request,
+    download: int = 0,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    agent = svc.get_agent(db, agent_id)
+    if agent is None:
+        return Response("代理不存在", status_code=404, media_type="text/plain; charset=utf-8")
+    return _qrcode_response(_invite_link(request, agent.invite_code),
+                            f"agent_{agent.invite_code}.png", bool(download))
 
 
 @router.post("/agents/create")
@@ -327,14 +361,35 @@ def agent_users_page(
     table = render_table(["用户ID", "昵称", "注册时间", "累计看广告", "广告展示", "累计贡献收益"], rows)
     link = _invite_link(request, agent.invite_code)
     info = (f'<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px 20px;'
-            f'margin-bottom:20px;font-size:14px;color:#374151;line-height:1.9;">'
+            f'margin-bottom:20px;font-size:14px;color:#374151;line-height:1.9;display:flex;gap:24px;'
+            f'flex-wrap:wrap;align-items:center;">'
+            f'<div style="flex:1;min-width:260px;">'
             f'代理：<b>{html.escape(agent.name)}</b>　分成比例：<b>{agent.share_ratio}%</b><br>'
-            f'专属邀请码：<b>{agent.invite_code}</b>　邀请链接：<b>{html.escape(link)}</b><br>'
-            f'<span style="color:#6b7280;font-size:12px;">用户通过你的邀请链接下载并用微信登录后，即归属到你名下。</span>'
+            f'专属邀请码：<b>{agent.invite_code}</b><br>邀请链接：<b>{html.escape(link)}</b><br>'
+            f'<span style="color:#6b7280;font-size:12px;">拉人方式：①把邀请链接发到微信群/朋友圈；'
+            f'②保存右侧二维码做海报，扫码即可下载；③直接把邀请码告诉用户，'
+            f'让他在 App 登录页的“邀请码”里填写。用户微信登录注册后即归属到你名下。</span>'
+            f'</div>'
+            f'<div style="text-align:center;">'
+            f'<img src="/admin/agent-users/qrcode.png" alt="推广二维码" '
+            f'style="width:150px;height:150px;border:1px solid #e5e7eb;border-radius:8px;"><br>'
+            f'<a href="/admin/agent-users/qrcode.png?download=1" style="font-size:13px;color:#2563eb;">'
+            f'下载推广二维码</a></div>'
             f'</div>')
     body = (f'<h1 style="color:#111827;">我的用户</h1>{info}{_agent_overview(db, agent)}{table}'
             f'{render_pagination("/admin/agent-users", page, has_next)}')
     return HTMLResponse(content=render_page("agent-users", body, admin))
+
+
+@router.get("/agent-users/qrcode.png")
+def agent_qrcode_self(
+    request: Request,
+    download: int = 0,
+    admin=Depends(verify_admin),
+):
+    agent = admin.agent
+    return _qrcode_response(_invite_link(request, agent.invite_code),
+                            f"invite_{agent.invite_code}.png", bool(download))
 
 
 # ==================== 代理端：我的账单 ====================
