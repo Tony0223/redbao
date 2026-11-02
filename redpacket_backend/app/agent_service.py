@@ -337,7 +337,7 @@ def calibrated_total(db: Session, agent_id: int):
 
 
 def calibrated_daily(db: Session, agent_id: int, days: int = 30):
-    """最近 N 天每日 (日期, 展示次数, 收益分, 是否已校正)，最新在前。"""
+    """最近 N 天每日 (日期, 展示次数, 上报收益分, 校正后收益分, 系数或None)，最新在前。系数为 None = 还没校正(预估)。"""
     rows = daily_revenue(db, agent_id, days)
     if not rows:
         return []
@@ -347,7 +347,7 @@ def calibrated_daily(db: Session, agent_id: int, days: int = 30):
     for d, cnt, rev in rows:
         dd = _as_date(d)
         f = factors.get(dd)
-        out.append((dd, cnt, rev * f if f is not None else rev, f is not None))
+        out.append((dd, cnt, rev, rev * f if f is not None else rev, f))
     return out
 
 

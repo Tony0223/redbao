@@ -130,7 +130,9 @@ def agents_page(
             f'<a class="ag-link" href="/admin/agents/{a.id}/qrcode.png?download=1">下载二维码</a></div>'
         )
         edit_btn = (f'<button type="button" class="ag-btn ag-btn-o" '
-                    f'onclick="document.getElementById(\'dlg-{a.id}\').showModal()">编辑</button>')
+                    f'onclick="document.getElementById(\'dlg-{a.id}\').showModal()">编辑</button> '
+                    f'<a class="ag-btn ag-btn-o" style="text-decoration:none;display:inline-block;" '
+                    f'href="/admin/agents/{a.id}/daily">明细</a>')
         dialogs.append(f"""
         <dialog class="ag-dlg" id="dlg-{a.id}">
           <form method="post" action="/admin/agents/{a.id}/update">
@@ -458,7 +460,7 @@ def _ov_card(label: str, value: str, hint: str = "") -> str:
 
 
 def _agent_overview(db: Session, agent) -> str:
-    """收益概览。每格显示：收益 / 按当前比例算的预计分成。已按穿山甲真实收益校正，没校正的标“含预估”。"""
+    """收益概览(代理也看)。每格：收益 / 预计分成。金额已校正，但代理端不出现“校正/穿山甲”字样，没校正的只提示“含预估”。"""
     today = date.today()
     d_start, d_end = svc.day_range(today)
     yesterday = today - timedelta(days=1)
@@ -466,7 +468,7 @@ def _agent_overview(db: Session, agent) -> str:
 
     def card(label, result):
         rev, est, _ = result
-        hint = f"含预估 ¥{svc.fen_to_yuan(est)}(还没按穿山甲真实收益校正)" if est > 0 else ""
+        hint = f"含预估 ¥{svc.fen_to_yuan(est)}" if est > 0 else ""
         return _ov_card(label, f"¥{svc.fen_to_yuan(rev)} / ¥{svc.fen_to_yuan(svc.share_of(agent, rev))}", hint)
 
     cards = "".join([
@@ -482,8 +484,7 @@ def _agent_overview(db: Session, agent) -> str:
     ])
     return (f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">{cards}</div>'
             f'<div style="font-size:12px;color:#9ca3af;margin-bottom:20px;">'
-            f'收益按穿山甲每天的真实收益校正；还没出真实数据的日期(如今天)是 App 上报的预估值，'
-            f'最终以结算单金额为准。“预计分成”按当前比例估算。</div>')
+            f'还没出最终数据的日期(如今天)是预估值，最终以结算单金额为准。“预计分成”按当前比例估算。</div>')
 
 
 @router.get("/agent-users", response_class=HTMLResponse)
@@ -548,12 +549,12 @@ def agent_bills_page(
 ):
     agent = admin.agent
     daily_rows = [
-        [str(d), shows, f"¥{svc.fen_to_yuan(rev)}", f"¥{svc.fen_to_yuan(svc.share_of(agent, rev))}",
-         '<span style="color:#16a34a;">已校正</span>' if done
-         else '<span class="ag-est" style="margin-left:0;">预估</span>']
-        for d, shows, rev, done in svc.calibrated_daily(db, agent.id, 30)
+        [str(d), shows, f"¥{svc.fen_to_yuan(rev)}",
+         ('' if f is not None else '<span class="ag-est" style="margin:0 6px 0 0;">预估</span>')
+         + f"¥{svc.fen_to_yuan(svc.share_of(agent, rev))}"]
+        for d, shows, _raw, rev, f in svc.calibrated_daily(db, agent.id, 30)
     ]
-    daily_table = render_table(["日期", "广告展示次数", "收益", "预计分成", "数据状态"], daily_rows)
+    daily_table = render_table(["日期", "广告展示次数", "收益", "预计分成"], daily_rows)
 
     settle_rows = [
         [
@@ -573,8 +574,7 @@ def agent_bills_page(
             f'<h2 style="color:#111827;font-size:16px;">结算单</h2>{settle_table}'
             f'<h2 style="color:#111827;font-size:16px;margin-top:28px;">最近30天每日收益</h2>'
             f'<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">'
-            f'“已校正”=已按穿山甲真实收益校正；“预估”=App 上报的预估值(真实数据一般次日下午出)。'
-            f'最终以结算单金额为准。</div>{daily_table}')
+            f'标“预估”的是还没出最终数据的日期，最终以结算单金额为准。</div>{daily_table}')
     body = _EST_STYLE + body
     return HTMLResponse(content=render_page("agent-bills", body, admin))
 
@@ -715,3 +715,37 @@ async def gromore_sync(
     failed = [r for r in results if "失败" in r or "未入库" in r]
     msg = ("拉取完成：" if not failed else "部分日期未成功：") + "；".join(failed or results[-3:])
     return _redirect("/admin/agents/gromore", msg[:600], ok=not failed)
+
+
+# ==================== 管理端：单个代理最近30天每日收益(含校正) ====================
+
+@router.get("/agents/{agent_id}/daily", response_class=HTMLResponse)
+def agent_daily_admin(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    agent = svc.get_agent(db, agent_id)
+    if agent is None:
+        return _redirect("/admin/agents", "代理不存在", ok=False)
+    rows = []
+    for d, shows, raw, rev, f in svc.calibrated_daily(db, agent.id, 30):
+        rows.append([
+            str(d),
+            shows,
+            f"¥{svc.fen_to_yuan(raw)}",
+            f"{f:.4f}" if f is not None else "—",
+            f"¥{svc.fen_to_yuan(rev)}",
+            f"¥{svc.fen_to_yuan(svc.share_of(agent, rev))}",
+            '<span style="color:#16a34a;">已校正</span>' if f is not None
+            else '<span class="ag-est" style="margin-left:0;">预估</span>',
+        ])
+    table = render_table(["日期", "广告展示次数", "上报收益", "校正系数", "校正后收益", "预计分成", "数据状态"], rows)
+    body = (f'{_AGENT_PAGE_ASSETS}<h1 style="color:#111827;">{html.escape(agent.name)} · 最近30天每日收益</h1>'
+            f'<div style="margin-bottom:16px;"><a href="/admin/agents" style="color:#2563eb;">← 返回代理商管理</a></div>'
+            f'<div style="font-size:13px;color:#6b7280;margin-bottom:12px;">'
+            f'分成比例 {agent.share_ratio}%。校正后收益 = 上报收益 × 当天校正系数(见'
+            f'<a href="/admin/agents/gromore" style="color:#2563eb;">穿山甲真实收益</a>)；'
+            f'“预估”= 当天还没拉到穿山甲真实收益，按上报值算。此页面代理看不到。</div>'
+            f'<div class="ag-tbl">{table}</div>')
+    return HTMLResponse(content=render_page("agents", body, admin))
