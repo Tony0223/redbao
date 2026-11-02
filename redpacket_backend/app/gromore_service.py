@@ -139,7 +139,7 @@ def fetch_day(cfg: dict, d: date) -> dict:
             params["site_ids"] = cfg["site_ids"]
         params["sign"] = sign_params(params, cfg["security_key"])
         try:
-            resp = requests.get(API_URL, params=params, timeout=30)
+            resp = requests.get(API_URL, params=params, timeout=(5, 20))
             body = resp.json()
         except requests.RequestException as e:
             raise GroMoreError(f"请求穿山甲失败：{e}")

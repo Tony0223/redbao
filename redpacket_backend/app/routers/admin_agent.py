@@ -21,6 +21,7 @@ import json
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 from urllib.parse import quote
@@ -706,7 +707,9 @@ async def gromore_sync(
     except ValueError:
         return _redirect("/admin/agents/gromore", "日期格式不对", ok=False)
     try:
-        results = gm.sync_range(db, start, end)
+        # 拉取要请求穿山甲接口(网络慢时可能几十秒)，放到线程池里跑，
+        # 不能直接在 async 函数里同步调用，否则会卡住整个后端，其他页面全部 504
+        results = await run_in_threadpool(gm.sync_range, db, start, end)
     except gm.GroMoreError as e:
         return _redirect("/admin/agents/gromore", str(e), ok=False)
     failed = [r for r in results if "失败" in r or "未入库" in r]
