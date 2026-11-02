@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app import crud, models
 from app.agent_models import (
-    AdRevenueLog, Agent, AgentSettlement, AgentUser, SettlementStatus,
+    AdRevenueLog, Agent, AgentSettlement, AgentUser, RealRevenueDaily, SettlementStatus,
 )
 
 # App 上报的广告类型白名单
@@ -256,6 +256,101 @@ def daily_revenue(db: Session, agent_id: int, days: int = 30):
     return [(d, int(c), Decimal(s or 0) / 1000) for d, c, s in rows]
 
 
+# ==================== 按穿山甲真实收益校正 ====================
+# 当天系数 = min(1, 穿山甲收益API / 全体用户当天上报收益)；代理当天收益 = 上报收益 × 系数。
+# 系数最大为 1：上报偏高时按比例压下来，偏低时不放大，保证分给代理的钱不超过穿山甲实际给的钱。
+# 还没拉到真实收益的日期(比如今天)用上报值，界面上标“预估”。
+
+def _as_date(v) -> date:
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    return date.fromisoformat(str(v)[:10])
+
+
+def _daily_reported(db: Session, start_d: date, end_d: date, agent_id: int = None) -> dict:
+    """[start_d, end_d] 每天的上报收益(分)。agent_id 为空表示全体用户(含非代理用户)。"""
+    day_col = func.date(AdRevenueLog.created_at)
+    q = (db.query(day_col, func.sum(AdRevenueLog.ecpm_fen))
+         .filter(AdRevenueLog.created_at >= day_range(start_d)[0],
+                 AdRevenueLog.created_at < day_range(end_d)[1]))
+    if agent_id is not None:
+        q = q.filter(AdRevenueLog.agent_id == agent_id)
+    return {_as_date(d): Decimal(s or 0) / 1000 for d, s in q.group_by(day_col).all()}
+
+
+def day_factors(db: Session, start_d: date, end_d: date) -> dict:
+    """有真实收益数据的日期 → 校正系数。"""
+    real = (db.query(RealRevenueDaily)
+            .filter(RealRevenueDaily.report_date >= start_d, RealRevenueDaily.report_date <= end_d)
+            .all())
+    if not real:
+        return {}
+    reported = _daily_reported(db, start_d, end_d)
+    factors = {}
+    for r in real:
+        rep = reported.get(_as_date(r.report_date), Decimal(0))
+        real_fen = Decimal(r.revenue_fen or 0)
+        factors[_as_date(r.report_date)] = Decimal(1) if rep <= 0 else min(Decimal(1), real_fen / rep)
+    return factors
+
+
+def first_revenue_date(db: Session, agent_id: int = None):
+    q = db.query(func.min(AdRevenueLog.created_at))
+    if agent_id is not None:
+        q = q.filter(AdRevenueLog.agent_id == agent_id)
+    v = q.scalar()
+    return _as_date(v) if v else None
+
+
+def calibrated_revenue(db: Session, agent_id: int, start_d: date, end_d: date):
+    """
+    代理在 [start_d, end_d](含首尾)的收益(分)。
+    返回 (收益, 其中预估部分, 缺真实数据的日期列表)。只有代理当天有上报收益的日期才算“缺”。
+    """
+    if end_d < start_d:
+        return Decimal(0), Decimal(0), []
+    reported = _daily_reported(db, start_d, end_d, agent_id)
+    if not reported:
+        return Decimal(0), Decimal(0), []
+    factors = day_factors(db, start_d, end_d)
+    total = est = Decimal(0)
+    missing = []
+    for d, v in reported.items():
+        if v <= 0:
+            continue
+        if d in factors:
+            total += v * factors[d]
+        else:
+            total += v
+            est += v
+            missing.append(d)
+    return total, est, sorted(missing)
+
+
+def calibrated_total(db: Session, agent_id: int):
+    first = first_revenue_date(db, agent_id)
+    if first is None:
+        return Decimal(0), Decimal(0), []
+    return calibrated_revenue(db, agent_id, first, date.today())
+
+
+def calibrated_daily(db: Session, agent_id: int, days: int = 30):
+    """最近 N 天每日 (日期, 展示次数, 收益分, 是否已校正)，最新在前。"""
+    rows = daily_revenue(db, agent_id, days)
+    if not rows:
+        return []
+    start_d = min(_as_date(d) for d, _, _ in rows)
+    factors = day_factors(db, start_d, date.today())
+    out = []
+    for d, cnt, rev in rows:
+        dd = _as_date(d)
+        f = factors.get(dd)
+        out.append((dd, cnt, rev * f if f is not None else rev, f is not None))
+    return out
+
+
 def share_of(agent: Agent, fen: Decimal) -> Decimal:
     return fen * Decimal(agent.share_ratio or 0) / 100
 
@@ -295,7 +390,14 @@ def create_settlement(db: Session, agent: Agent, start: date, end: date, remark:
         raise AgentError(
             f"和已有结算单时间重叠({overlap.period_start} ~ {overlap.period_end})，不能重复结算"
         )
-    rev = revenue_fen(db, agent.id, day_range(start)[0], day_range(end)[1])
+    # 按穿山甲真实收益校正后的金额结算；期间有任何一天还没拉到真实收益就不让生成
+    rev, _est, missing = calibrated_revenue(db, agent.id, start, end)
+    if missing:
+        shown = "、".join(str(d) for d in missing[:10]) + (" 等" if len(missing) > 10 else "")
+        raise AgentError(
+            f"以下日期还没有穿山甲真实收益数据，不能生成结算单：{shown}。"
+            f"请到“穿山甲真实收益”页面拉取后再结算"
+        )
     settlement = AgentSettlement(
         agent_id=agent.id,
         period_start=start,

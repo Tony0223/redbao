@@ -10,7 +10,11 @@
 - /admin/agent-users               我的用户 + 收益概览
 - /admin/agent-bills               我的账单：每日收益明细 + 结算单
 
-收益口径：App 每次广告展示上报的真实 eCPM，单次收益 = eCPM / 1000 (分)。
+- /admin/agents/gromore             穿山甲真实收益：配置 GroMore 数据API、拉取每日收益API、查看校正系数
+
+收益口径：App 每次广告展示上报 eCPM，单次收益 = eCPM / 1000 (分)；
+再按穿山甲每天的真实收益(收益API)校正：系数 = min(1, 真实收益 / 全体上报收益)。
+还没拉到真实收益的日期(如今天)显示上报值，标“预估”；结算单只按校正后的金额生成。
 """
 import html
 import json
@@ -22,7 +26,9 @@ from sqlalchemy.orm import Session
 from urllib.parse import quote
 
 from app import agent_service as svc
+from app import gromore_service as gm
 from app.agent_models import SETTLEMENT_STATUS_LABELS, SettlementStatus
+from app import crud
 from app.database import get_db
 from app.routers.admin import (
     render_page, render_pagination, render_table, stat_card, verify_admin,
@@ -73,6 +79,18 @@ def _status_badge(status: str) -> str:
     return f'<span style="color:{color};font-weight:600;">{label}</span>'
 
 
+def _month_dates(today: date):
+    """本月 1 号~今天，上月 1 号~上月最后一天"""
+    m_start = today.replace(day=1)
+    lm_end = m_start - timedelta(days=1)
+    return (m_start, today), (lm_end.replace(day=1), lm_end)
+
+
+def _est_tag(est) -> str:
+    return ('<span class="ag-est" title="包含还没按穿山甲真实收益校正的预估部分">含预估</span>'
+            if est and est > 0 else "")
+
+
 def _redirect(path: str, msg: str = "", ok: bool = True) -> RedirectResponse:
     qs = f"?msg={quote(msg)}&ok={1 if ok else 0}" if msg else ""
     return RedirectResponse(url=path + qs, status_code=303)
@@ -88,8 +106,7 @@ def agents_page(
     db: Session = Depends(get_db),
     admin=Depends(verify_admin),
 ):
-    month_start, month_end = svc.month_range(date.today())
-    last_start, last_end = svc.prev_month_range(date.today())
+    (m_start, m_end), (lm_start, lm_end) = _month_dates(date.today())
     rows = []
     dialogs = []
     for a in svc.list_agents(db):
@@ -98,8 +115,8 @@ def agents_page(
             from app import crud
             au = crud.get_admin_user_by_id(db, a.admin_user_id)
             login = html.escape(au.username) if au else "—"
-        month_rev = svc.revenue_fen(db, a.id, month_start, month_end)
-        last_rev = svc.revenue_fen(db, a.id, last_start, last_end)
+        month_rev, month_est, _ = svc.calibrated_revenue(db, a.id, m_start, m_end)
+        last_rev, last_est, _ = svc.calibrated_revenue(db, a.id, lm_start, lm_end)
         link = _invite_link(request, a.invite_code)
         link_js = html.escape(json.dumps(link), quote=True)
         status = ('<span class="ag-tag ag-on">启用</span>' if a.enabled
@@ -146,9 +163,9 @@ def agents_page(
             invite_cell,
             f"{a.share_ratio}%",
             svc.count_agent_users(db, a.id),
-            f"¥{svc.fen_to_yuan(month_rev)}",
-            f"¥{svc.fen_to_yuan(svc.share_of(a, month_rev))}",
-            f"¥{svc.fen_to_yuan(svc.share_of(a, last_rev))}",
+            f"¥{svc.fen_to_yuan(month_rev)}{_est_tag(month_est)}",
+            f"¥{svc.fen_to_yuan(svc.share_of(a, month_rev))}{_est_tag(month_est)}",
+            f"¥{svc.fen_to_yuan(svc.share_of(a, last_rev))}{_est_tag(last_est)}",
             f"¥{svc.fen_to_yuan(svc.pending_share_fen(db, a.id))}",
             login,
             status,
@@ -179,11 +196,13 @@ def agents_page(
       </form>
     </div>
     """
-    nav = ('<div style="margin-bottom:16px;"><a href="/admin/agents/settlements" '
-           'style="color:#2563eb;">→ 代理结算单</a></div>')
+    nav = ('<div style="margin-bottom:16px;display:flex;gap:20px;">'
+           '<a href="/admin/agents/settlements" style="color:#2563eb;">→ 代理结算单</a>'
+           '<a href="/admin/agents/gromore" style="color:#2563eb;">→ 穿山甲真实收益</a></div>')
     body = (f'{_AGENT_PAGE_ASSETS}<h1 style="color:#111827;">代理商管理</h1>{_tip(msg, bool(ok))}{nav}'
             f'<div style="font-size:13px;color:#6b7280;margin-bottom:12px;">'
-            f'收益=名下用户广告展示的真实eCPM累计；应分=收益×比例。</div>'
+            f'收益=名下用户广告展示上报的eCPM累计，按穿山甲每天的真实收益校正(只少不多)；'
+            f'应分=收益×比例。“含预估”表示其中有还没拉到穿山甲真实收益的日期(如今天)。</div>'
             f'<div class="ag-tbl">{table}</div>{create_form}{"".join(dialogs)}')
     return HTMLResponse(content=render_page("agents", body, admin))
 
@@ -211,6 +230,8 @@ _AGENT_PAGE_ASSETS = """
   .ag-on { background:#dcfce7; color:#166534; }
   .ag-off { background:#fee2e2; color:#991b1b; }
   .ag-hint { color:#9ca3af; font-size:12px; margin-left:6px; }
+  .ag-est { display:inline-block; margin-left:6px; padding:0 6px; border-radius:4px; font-size:11px;
+            background:#fef3c7; color:#92400e; vertical-align:middle; font-weight:400; }
   .ag-card { border:1px solid #e5e7eb; border-radius:12px; padding:22px 24px; margin-top:24px; background:#fff; }
   .ag-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:14px 16px; }
   .ag-grid label.t { display:block; font-size:13px; color:#374151; margin-bottom:6px; }
@@ -364,8 +385,10 @@ def settlements_page(
         <input name="remark" placeholder="备注(选填)" style="{INPUT_STYLE}" />
         <button type="submit" style="{BTN_STYLE}background:#2563eb;">生成</button>
         <div style="font-size:12px;color:#6b7280;">
-          按所选时间段(含首尾两天)统计该代理名下用户的广告收益，按代理当前比例计算应付金额并冻结；
-          只能结算到昨天，同一代理时间段不能重叠。</div>
+          按所选时间段(含首尾两天)统计该代理名下用户的广告收益，并按穿山甲每天的真实收益校正(只少不多)，
+          再按代理当前比例计算应付金额并冻结；只能结算到昨天，同一代理时间段不能重叠；
+          期间内有任何一天还没拉到穿山甲真实收益时不能生成，请先到
+          <a href="/admin/agents/gromore" style="color:#2563eb;">穿山甲真实收益</a> 拉取。</div>
       </form>
     </div>"""
     body = (f'<h1 style="color:#111827;">代理结算单</h1>{_tip(msg, bool(ok))}'
@@ -434,30 +457,32 @@ def _ov_card(label: str, value: str, hint: str = "") -> str:
 
 
 def _agent_overview(db: Session, agent) -> str:
-    """收益概览。每格显示：收益 / 按当前比例算的预计分成。"""
+    """收益概览。每格显示：收益 / 按当前比例算的预计分成。已按穿山甲真实收益校正，没校正的标“含预估”。"""
     today = date.today()
     d_start, d_end = svc.day_range(today)
-    y_start, y_end = svc.day_range(today - timedelta(days=1))
-    m_start, m_end = svc.month_range(today)
-    lm_start, lm_end = svc.prev_month_range(today)
+    yesterday = today - timedelta(days=1)
+    (m_start, m_end), (lm_start, lm_end) = _month_dates(today)
 
-    def pair(rev):
-        return f"¥{svc.fen_to_yuan(rev)} / ¥{svc.fen_to_yuan(svc.share_of(agent, rev))}"
+    def card(label, result):
+        rev, est, _ = result
+        hint = f"含预估 ¥{svc.fen_to_yuan(est)}(还没按穿山甲真实收益校正)" if est > 0 else ""
+        return _ov_card(label, f"¥{svc.fen_to_yuan(rev)} / ¥{svc.fen_to_yuan(svc.share_of(agent, rev))}", hint)
 
     cards = "".join([
         _ov_card("名下用户", str(svc.count_agent_users(db, agent.id)),
                  f"今日新增 {svc.count_agent_users(db, agent.id, d_start, d_end)}"),
-        _ov_card("今日收益 / 预计分成", pair(svc.revenue_fen(db, agent.id, d_start, d_end))),
-        _ov_card("昨日收益 / 预计分成", pair(svc.revenue_fen(db, agent.id, y_start, y_end))),
-        _ov_card("本月收益 / 预计分成", pair(svc.revenue_fen(db, agent.id, m_start, m_end))),
-        _ov_card("上月收益 / 预计分成", pair(svc.revenue_fen(db, agent.id, lm_start, lm_end))),
-        _ov_card("累计收益 / 预计分成", pair(svc.total_revenue_fen(db, agent.id))),
+        card("今日收益 / 预计分成", svc.calibrated_revenue(db, agent.id, today, today)),
+        card("昨日收益 / 预计分成", svc.calibrated_revenue(db, agent.id, yesterday, yesterday)),
+        card("本月收益 / 预计分成", svc.calibrated_revenue(db, agent.id, m_start, m_end)),
+        card("上月收益 / 预计分成", svc.calibrated_revenue(db, agent.id, lm_start, lm_end)),
+        card("累计收益 / 预计分成", svc.calibrated_total(db, agent.id)),
         _ov_card("待打款", f"¥{svc.fen_to_yuan(svc.pending_share_fen(db, agent.id))}",
                  "已出结算单、还没打款的金额"),
     ])
     return (f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">{cards}</div>'
             f'<div style="font-size:12px;color:#9ca3af;margin-bottom:20px;">'
-            f'“预计分成”按当前比例估算，实际以管理员生成的结算单金额为准。</div>')
+            f'收益按穿山甲每天的真实收益校正；还没出真实数据的日期(如今天)是 App 上报的预估值，'
+            f'最终以结算单金额为准。“预计分成”按当前比例估算。</div>')
 
 
 @router.get("/agent-users", response_class=HTMLResponse)
@@ -479,7 +504,7 @@ def agent_users_page(
             int(shows or 0),
             f"¥{svc.fen_to_yuan(rev or 0)}",
         ])
-    table = render_table(["用户ID", "昵称", "注册时间", "累计看广告", "广告展示", "累计贡献收益"], rows)
+    table = render_table(["用户ID", "昵称", "注册时间", "累计看广告", "广告展示", "累计贡献收益(预估)"], rows)
     link = _invite_link(request, agent.invite_code)
     info = (f'<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px 20px;'
             f'margin-bottom:20px;font-size:14px;color:#374151;line-height:1.9;display:flex;gap:24px;'
@@ -497,7 +522,7 @@ def agent_users_page(
             f'<a href="/admin/agent-users/qrcode.png?download=1" style="font-size:13px;color:#2563eb;">'
             f'下载推广二维码</a></div>'
             f'</div>')
-    body = (f'<h1 style="color:#111827;">我的用户</h1>{info}{_agent_overview(db, agent)}{table}'
+    body = (f'{_EST_STYLE}<h1 style="color:#111827;">我的用户</h1>{info}{_agent_overview(db, agent)}{table}'
             f'{render_pagination("/admin/agent-users", page, has_next)}')
     return HTMLResponse(content=render_page("agent-users", body, admin))
 
@@ -522,10 +547,12 @@ def agent_bills_page(
 ):
     agent = admin.agent
     daily_rows = [
-        [str(d), shows, f"¥{svc.fen_to_yuan(rev)}", f"¥{svc.fen_to_yuan(svc.share_of(agent, rev))}"]
-        for d, shows, rev in svc.daily_revenue(db, agent.id, 30)
+        [str(d), shows, f"¥{svc.fen_to_yuan(rev)}", f"¥{svc.fen_to_yuan(svc.share_of(agent, rev))}",
+         '<span style="color:#16a34a;">已校正</span>' if done
+         else '<span class="ag-est" style="margin-left:0;">预估</span>']
+        for d, shows, rev, done in svc.calibrated_daily(db, agent.id, 30)
     ]
-    daily_table = render_table(["日期", "广告展示次数", "收益", "预计分成"], daily_rows)
+    daily_table = render_table(["日期", "广告展示次数", "收益", "预计分成", "数据状态"], daily_rows)
 
     settle_rows = [
         [
@@ -545,5 +572,143 @@ def agent_bills_page(
             f'<h2 style="color:#111827;font-size:16px;">结算单</h2>{settle_table}'
             f'<h2 style="color:#111827;font-size:16px;margin-top:28px;">最近30天每日收益</h2>'
             f'<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">'
-            f'当天数据实时变化，以结算单金额为准。</div>{daily_table}')
+            f'“已校正”=已按穿山甲真实收益校正；“预估”=App 上报的预估值(真实数据一般次日下午出)。'
+            f'最终以结算单金额为准。</div>{daily_table}')
+    body = _EST_STYLE + body
     return HTMLResponse(content=render_page("agent-bills", body, admin))
+
+
+_EST_STYLE = """<style>.ag-est { display:inline-block; margin-left:6px; padding:0 6px; border-radius:4px;
+  font-size:11px; background:#fef3c7; color:#92400e; vertical-align:middle; }</style>"""
+
+
+# ==================== 管理端：穿山甲真实收益 ====================
+
+@router.get("/agents/gromore", response_class=HTMLResponse)
+def gromore_page(
+    msg: str = "",
+    ok: int = 1,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    cfg = gm.get_config(db)
+    today = date.today()
+    start = today - timedelta(days=44)
+    real = gm.list_real(db, start, today)
+    reported = svc._daily_reported(db, start, today)
+    factors = svc.day_factors(db, start, today)
+    rows = []
+    d = today
+    while d >= start:
+        r = real.get(d)
+        rep_fen = reported.get(d)
+        if r is not None or rep_fen:
+            if r is None:
+                status = ('<span class="ag-est" style="margin-left:0;">预估</span>' if d == today
+                          else '<span style="color:#dc2626;">未拉取</span>')
+            else:
+                status = '<span style="color:#16a34a;">已校正</span>'
+            f = factors.get(d)
+            gap = ""
+            if r is not None and r.imp_cnt:
+                gap = f"{r.api_imp_cnt} / {r.imp_cnt}"
+            rows.append([
+                str(d),
+                f"¥{svc.fen_to_yuan(r.revenue_fen)}" if r is not None else "—",
+                f"¥{svc.fen_to_yuan(rep_fen or 0)}",
+                f"{f:.4f}" if f is not None else "—",
+                gap or "—",
+                r.fetched_at.strftime("%m-%d %H:%M") if r is not None and r.fetched_at else "—",
+                status,
+            ])
+        d -= timedelta(days=1)
+    table = render_table(
+        ["日期", "穿山甲收益API", "全体用户上报收益", "校正系数", "展示API / GroMore展示", "拉取时间", "状态"],
+        rows,
+    )
+    key_ph = "已设置（留空则不修改）" if cfg["security_key"] else "未设置"
+    configured = gm.is_configured(cfg)
+    last_sync = html.escape(crud.get_setting(db, gm.KEY_LAST_SYNC, "") or "还没有拉取过")
+    yesterday = today - timedelta(days=1)
+    config_form = f"""
+    <div class="ag-card" style="margin-top:0;">
+      <h2 style="margin:0 0 6px;color:#111827;font-size:16px;">GroMore 数据API 配置</h2>
+      <div class="ag-hint" style="margin:0 0 14px;">
+        在穿山甲后台获取 security key、user_id、role_id。若用子账号，主账号需在“角色管理”里给该角色配置“查看全部数据”权限。</div>
+      <form method="post" action="/admin/agents/gromore/config">
+        <div class="ag-grid">
+          <div><label class="t">user_id *</label>
+            <input class="ag-in" name="user_id" value="{html.escape(cfg['user_id'])}" required /></div>
+          <div><label class="t">role_id *</label>
+            <input class="ag-in" name="role_id" value="{html.escape(cfg['role_id'])}" required /></div>
+          <div><label class="t">security key *</label>
+            <input class="ag-in" type="password" name="security_key" placeholder="{key_ph}" autocomplete="new-password" /></div>
+          <div><label class="t">应用ID（选填）</label>
+            <input class="ag-in" name="site_ids" value="{html.escape(cfg['site_ids'])}" placeholder="只统计这个App，多个用逗号分隔" /></div>
+        </div>
+        <div style="margin-top:16px;"><button type="submit" class="ag-btn ag-btn-p">保存配置</button></div>
+      </form>
+    </div>"""
+    sync_form = f"""
+    <div class="ag-card">
+      <h2 style="margin:0 0 6px;color:#111827;font-size:16px;">拉取真实收益</h2>
+      <div class="ag-hint" style="margin:0 0 14px;">
+        系统每天 15:20 和 21:20 自动拉取最近 7 天(穿山甲前一天的数据次日 14 点后才完整，三方数据可能事后修正，所以会重拉覆盖)。
+        需要补历史数据(比如上个月)时在这里手动拉，一次最多 31 天。</div>
+      <form method="post" action="/admin/agents/gromore/sync" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        开始 <input class="ag-in" style="width:auto;" type="date" name="start" value="{(yesterday - timedelta(days=6)).isoformat()}" required />
+        结束 <input class="ag-in" style="width:auto;" type="date" name="end" value="{yesterday.isoformat()}" required />
+        <button type="submit" class="ag-btn ag-btn-s" {"" if configured else "disabled"}>立即拉取</button>
+        {"" if configured else '<span class="ag-hint">先保存上面的配置</span>'}
+      </form>
+      <div style="margin-top:12px;font-size:12px;color:#6b7280;word-break:break-all;">最近一次：{last_sync}</div>
+    </div>"""
+    explain = ('<div style="font-size:13px;color:#6b7280;margin:24px 0 10px;line-height:1.8;">'
+               '校正系数 = min(1, 穿山甲收益API ÷ 全体用户上报收益)。代理当天收益 = 上报收益 × 系数，'
+               '保证分给代理的钱不超过穿山甲实际给的钱。“未拉取”的日期不能生成结算单。'
+               '“展示API / GroMore展示”差距很大时，说明有广告网络没授权 Reporting API，真实收益会偏少。</div>')
+    body = (f'{_AGENT_PAGE_ASSETS}<h1 style="color:#111827;">穿山甲真实收益</h1>{_tip(msg, bool(ok))}'
+            f'<div style="margin-bottom:16px;"><a href="/admin/agents" style="color:#2563eb;">← 返回代理商管理</a></div>'
+            f'{config_form}{sync_form}{explain}<div class="ag-tbl">{table}</div>')
+    return HTMLResponse(content=render_page("agents", body, admin))
+
+
+@router.post("/agents/gromore/config")
+async def gromore_config(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    form = await request.form()
+    try:
+        gm.save_config(
+            db,
+            user_id=(form.get("user_id") or "").strip(),
+            role_id=(form.get("role_id") or "").strip(),
+            security_key=(form.get("security_key") or "").strip(),
+            site_ids=(form.get("site_ids") or "").strip(),
+        )
+    except gm.GroMoreError as e:
+        return _redirect("/admin/agents/gromore", str(e), ok=False)
+    return _redirect("/admin/agents/gromore", "配置已保存")
+
+
+@router.post("/agents/gromore/sync")
+async def gromore_sync(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin=Depends(verify_admin),
+):
+    form = await request.form()
+    try:
+        start = date.fromisoformat(form.get("start") or "")
+        end = date.fromisoformat(form.get("end") or "")
+    except ValueError:
+        return _redirect("/admin/agents/gromore", "日期格式不对", ok=False)
+    try:
+        results = gm.sync_range(db, start, end)
+    except gm.GroMoreError as e:
+        return _redirect("/admin/agents/gromore", str(e), ok=False)
+    failed = [r for r in results if "失败" in r or "未入库" in r]
+    msg = ("拉取完成：" if not failed else "部分日期未成功：") + "；".join(failed or results[-3:])
+    return _redirect("/admin/agents/gromore", msg[:600], ok=not failed)

@@ -79,3 +79,20 @@ class AgentSettlement(Base):
     remark = Column(String(255), nullable=True)
     settled_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class RealRevenueDaily(Base):
+    """
+    穿山甲 GroMore「收益API」(api_revenue) 每天的真实总收益，后台定时从 GroMore 数据API 拉取。
+    用来校正 App 上报的 eCPM：当天系数 = min(1, 真实收益 / 全体用户上报收益)，
+    代理当天收益 = 上报收益 × 系数，保证分给代理的钱不超过穿山甲实际给的钱。
+    """
+    __tablename__ = "real_revenue_daily"
+
+    id = Column(Integer, primary_key=True, index=True)
+    report_date = Column(Date, unique=True, index=True, nullable=False)
+    revenue_fen = Column(Numeric(16, 4), nullable=False, default=0, comment="收益API，单位分")
+    api_imp_cnt = Column(Integer, nullable=False, default=0, comment="展示API")
+    imp_cnt = Column(Integer, nullable=False, default=0, comment="GroMore统计的展示")
+    currency = Column(String(8), nullable=False, default="cny")
+    fetched_at = Column(DateTime, nullable=False, comment="最后一次拉取时间")

@@ -5,7 +5,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app import crud, punch_service
+from app import crud, gromore_service, punch_service
 from app.database import Base, SessionLocal, engine
 from app.routers import (
     ad, admin, admin_punch, admin_signin, admin_subsidy, invite, landing,
@@ -96,9 +96,25 @@ def _publish_punch_job():
         db.close()
 
 
+def _gromore_sync_job():
+    """每天拉穿山甲 GroMore 最近 7 天的真实收益(收益API)，用来校正代理收益。没配置就跳过。"""
+    db = SessionLocal()
+    try:
+        if gromore_service.is_configured(gromore_service.get_config(db)):
+            results = gromore_service.sync_recent(db, 7)
+            logger.info("穿山甲真实收益拉取: %s", "；".join(results))
+    except Exception as e:
+        logger.error("穿山甲真实收益拉取出错: %s", e)
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def start_scheduler():
     scheduler.add_job(_publish_punch_job, "interval", minutes=1, id="punch_publish",
+                      replace_existing=True)
+    # 前一天数据次日 14 点后才完整，15:20 拉一次，21:20 再补一次
+    scheduler.add_job(_gromore_sync_job, "cron", hour="15,21", minute=20, id="gromore_sync",
                       replace_existing=True)
     scheduler.start()
     logger.info("定时任务已启动")
